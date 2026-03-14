@@ -27,7 +27,7 @@ class Detection:
         Human-readable string identifier, e.g. the AprilTag numeric ID
         or the text payload of a QR code.  ``None`` for laser spots.
     center:
-        ``(x, y)`` pixel coordinates of the object centre.
+        ``(x, y)`` pixel coordinates of the object center.
     corners:
         Ordered corner points of the bounding polygon (may be empty for
         laser spots, which use the bounding-rect corners).

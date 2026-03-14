@@ -34,7 +34,7 @@ class CentroidTracker:
         self._next_id: int = 0
         # (DetectionType, identifier) -> track_id  (for labeled objects)
         self._labeled_tracks: Dict[Tuple, int] = {}
-        # track_id -> last-known centre  (for unlabeled objects)
+        # track_id -> last-known center  (for unlabeled objects)
         self._unlabeled_tracks: Dict[int, Tuple[int, int]] = {}
         # track_id -> consecutive frames without a match
         self._disappeared: Dict[int, int] = {}
