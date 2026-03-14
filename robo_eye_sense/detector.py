@@ -7,6 +7,7 @@ use in a ``while True`` video loop.
 
 from __future__ import annotations
 
+import math
 import warnings
 from typing import Dict, List, Optional, Tuple
 
@@ -25,6 +26,66 @@ _COLOURS: Dict[DetectionType, Tuple[int, int, int]] = {
     DetectionType.QR_CODE: (255, 128, 0),    # blue-ish
     DetectionType.LASER_SPOT: (0, 255, 255), # yellow
 }
+
+# Length of axis arrows drawn at the detection centre
+_AXIS_LENGTH = 40
+
+
+def _compute_orientation(corners: List[Tuple[int, int]]) -> float:
+    """Return orientation angle in degrees computed from bounding corners.
+
+    The angle is measured between the first two corners projected onto the
+    image X-axis.  Returns ``0.0`` when fewer than two corners are available.
+    """
+    if len(corners) < 2:
+        return 0.0
+    dx = corners[1][0] - corners[0][0]
+    dy = corners[1][1] - corners[0][1]
+    return math.degrees(math.atan2(dy, dx))
+
+
+def _draw_axes(
+    frame: np.ndarray,
+    center: Tuple[int, int],
+    angle_deg: float,
+    length: int = _AXIS_LENGTH,
+) -> None:
+    """Draw a 2-D coordinate-axis glyph (X red, Y green) at *center*.
+
+    The glyph is rotated by *angle_deg* so that it aligns with the detected
+    object's local orientation.
+
+    Parameters
+    ----------
+    frame:
+        BGR image to draw on (modified in-place).
+    center:
+        ``(x, y)`` pixel origin of the glyph.
+    angle_deg:
+        Rotation angle in degrees (measured CCW from the positive X-axis).
+    length:
+        Arrow length in pixels.
+    """
+    cx, cy = center
+    angle_rad = math.radians(angle_deg)
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+
+    # X axis (red) – points in the object's local "right" direction
+    x_tip = (int(cx + length * cos_a), int(cy + length * sin_a))
+    cv2.arrowedLine(frame, (cx, cy), x_tip, (0, 0, 255), 2, tipLength=0.25)
+    cv2.putText(
+        frame, "X", (x_tip[0] + 4, x_tip[1] + 4),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1, cv2.LINE_AA,
+    )
+
+    # Y axis (green) – perpendicular (90° CCW from X in image coords)
+    y_tip = (int(cx - length * sin_a), int(cy + length * cos_a))
+    cv2.arrowedLine(frame, (cx, cy), y_tip, (0, 255, 0), 2, tipLength=0.25)
+    cv2.putText(
+        frame, "Y", (y_tip[0] + 4, y_tip[1] + 4),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, cv2.LINE_AA,
+    )
 
 
 class RoboEyeDetector:
@@ -134,7 +195,17 @@ class RoboEyeDetector:
     def draw_detections(
         self, frame: np.ndarray, detections: List[Detection]
     ) -> np.ndarray:
-        """Draw bounding polygons, centres, and labels onto *frame*.
+        """Draw bounding polygons, coordinate axes, and info labels onto *frame*.
+
+        Each detected object receives:
+
+        * A bounding polygon drawn in the category colour.
+        * A filled dot at the centroid.
+        * A 2-D coordinate-axis glyph (X red, Y green) anchored at the
+          centroid and rotated to match the object's local orientation.
+        * Multi-line position / orientation annotation that moves with the
+          object: pixel position ``(x, y)``, orientation angle ``θ``, the
+          detection category, optional identifier, and track ID.
 
         Modifies *frame* in-place and returns it for convenience.
 
@@ -161,26 +232,40 @@ class RoboEyeDetector:
             # Centre dot
             cv2.circle(frame, d.center, 5, colour, -1)
 
-            # Label: "<type>[:<identifier>] [#<track_id>]"
+            # Compute object orientation from its corners (0° when no corners)
+            angle = _compute_orientation(d.corners)
+
+            # Draw coordinate-axis glyph at the centroid
+            _draw_axes(frame, d.center, angle)
+
+            # Build multi-line annotation that moves with the object
+            cx, cy = d.center
+            lines: List[str] = [
+                f"X:{cx}  Y:{cy}",
+                f"ang:{angle:.1f}deg",
+            ]
             label = d.detection_type.value.replace("_", " ").title()
             if d.identifier:
-                # Truncate long QR payloads for readability
-                payload = d.identifier[:20] + ("…" if len(d.identifier) > 20 else "")
+                payload = d.identifier[:20] + ("..." if len(d.identifier) > 20 else "")
                 label += f": {payload}"
             if d.track_id is not None:
                 label += f"  #{d.track_id}"
+            lines.append(label)
 
-            text_x = d.center[0] + 8
-            text_y = d.center[1] - 8
-            cv2.putText(
-                frame,
-                label,
-                (text_x, text_y),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                colour,
-                1,
-                cv2.LINE_AA,
-            )
+            # Render lines below and to the right of the centroid
+            text_x = cx + _AXIS_LENGTH + 6
+            text_y = cy - 20
+            line_height = 16
+            for i, line in enumerate(lines):
+                cv2.putText(
+                    frame,
+                    line,
+                    (text_x, text_y + i * line_height),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.45,
+                    colour,
+                    1,
+                    cv2.LINE_AA,
+                )
 
         return frame

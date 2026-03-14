@@ -2,6 +2,9 @@
 numpy>=1.20.0
 opencv-python>=4.5.0
 
+# GUI support (tkinter image rendering)
+Pillow>=9.0.0
+
 # AprilTag detection
 # Pre-compiled binaries available for x86_64 and ARM (Raspberry Pi).
 pupil-apriltags>=1.0.4

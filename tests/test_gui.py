@@ -1,0 +1,239 @@
+"""Tests for the new GUI helpers and enhanced draw_detections overlay.
+
+The GUI itself (Tkinter mainloop) is not exercised here to avoid needing a
+display server.  Instead, we test:
+
+* The ``_compute_orientation`` helper.
+* The ``_draw_axes`` helper (that it doesn't raise and modifies the frame).
+* The enhanced ``draw_detections`` (axes + multi-line position/orientation
+  annotation) on synthetic frames.
+* The ``RoboEyeSenseApp`` constructor and control callbacks without running
+  the main loop (using a Tk instance that is immediately destroyed).
+"""
+
+from __future__ import annotations
+
+import math
+from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pytest
+
+from robo_eye_sense.detector import (
+    RoboEyeDetector,
+    _compute_orientation,
+    _draw_axes,
+)
+from robo_eye_sense.results import Detection, DetectionType
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _has_display() -> bool:
+    """Return True when a graphical display is available for tkinter tests."""
+    import os
+    if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+        return True
+    try:
+        import tkinter as _tk
+        r = _tk.Tk()
+        r.destroy()
+        return True
+    except Exception:
+        return False
+
+
+_requires_display = pytest.mark.skipif(
+    not _has_display(),
+    reason="No display available (set DISPLAY env var or run under Xvfb)",
+)
+
+
+# ---------------------------------------------------------------------------
+# _compute_orientation
+# ---------------------------------------------------------------------------
+
+
+class TestComputeOrientation:
+    def test_empty_corners_returns_zero(self):
+        assert _compute_orientation([]) == pytest.approx(0.0)
+
+    def test_one_corner_returns_zero(self):
+        assert _compute_orientation([(10, 20)]) == pytest.approx(0.0)
+
+    def test_horizontal_edge(self):
+        # Two corners on the same horizontal row → angle == 0°
+        angle = _compute_orientation([(0, 0), (10, 0)])
+        assert angle == pytest.approx(0.0)
+
+    def test_vertical_edge(self):
+        # Two corners forming a downward-pointing vertical edge → angle == 90°
+        angle = _compute_orientation([(0, 0), (0, 10)])
+        assert angle == pytest.approx(90.0)
+
+    def test_diagonal_edge(self):
+        # 45° diagonal
+        angle = _compute_orientation([(0, 0), (10, 10)])
+        assert angle == pytest.approx(45.0)
+
+    def test_negative_angle(self):
+        # Corner to the upper-right → -45°
+        angle = _compute_orientation([(0, 0), (10, -10)])
+        assert angle == pytest.approx(-45.0)
+
+
+# ---------------------------------------------------------------------------
+# _draw_axes
+# ---------------------------------------------------------------------------
+
+
+class TestDrawAxes:
+    def test_does_not_raise(self):
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        _draw_axes(frame, (100, 100), 0.0)
+
+    def test_modifies_frame(self):
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        before = frame.copy()
+        _draw_axes(frame, (100, 100), 0.0)
+        assert not np.array_equal(frame, before), "Frame should be modified by _draw_axes"
+
+    def test_rotated_does_not_raise(self):
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        for angle in (0, 45, 90, 135, 180, -45, -90):
+            _draw_axes(frame, (100, 100), angle)
+
+
+# ---------------------------------------------------------------------------
+# Enhanced draw_detections
+# ---------------------------------------------------------------------------
+
+
+class TestDrawDetectionsEnhanced:
+    @pytest.fixture
+    def detector(self):
+        with patch(
+            "robo_eye_sense.detector._apriltags_available",
+            return_value=False,
+        ):
+            return RoboEyeDetector(enable_qr=False, enable_laser=False)
+
+    def test_returns_frame_with_correct_shape(self, detector):
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        result = detector.draw_detections(frame.copy(), [])
+        assert result.shape == frame.shape
+
+    def test_axes_drawn_for_detection_with_corners(self, detector):
+        """With a detection that has corners the frame should be modified."""
+        d = Detection(
+            detection_type=DetectionType.QR_CODE,
+            identifier="test",
+            center=(100, 100),
+            corners=[(90, 90), (110, 90), (110, 110), (90, 110)],
+            track_id=0,
+        )
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        result = detector.draw_detections(frame.copy(), [d])
+        assert not np.array_equal(result, frame), "Annotations should change the frame"
+
+    def test_draw_laser_spot_no_corners(self, detector):
+        """Laser spots have no meaningful corners; draw must not raise."""
+        d = Detection(
+            detection_type=DetectionType.LASER_SPOT,
+            identifier=None,
+            center=(50, 50),
+            corners=[],
+            track_id=1,
+        )
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        result = detector.draw_detections(frame.copy(), [d])
+        assert result is not None
+
+    def test_long_qr_identifier_truncated(self, detector):
+        long_id = "A" * 50
+        d = Detection(
+            detection_type=DetectionType.QR_CODE,
+            identifier=long_id,
+            center=(100, 100),
+            corners=[(90, 90), (110, 90), (110, 110), (90, 110)],
+            track_id=0,
+        )
+        frame = np.zeros((300, 300, 3), dtype=np.uint8)
+        # Must not raise even with a very long identifier
+        result = detector.draw_detections(frame.copy(), [d])
+        assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# GUI module – constructor + callbacks (no mainloop)
+# ---------------------------------------------------------------------------
+
+
+class TestRoboEyeSenseApp:
+    """Verify RoboEyeSenseApp constructs without errors and callbacks work."""
+
+    pytestmark = _requires_display
+
+    @pytest.fixture
+    def app(self):
+        """Create a RoboEyeSenseApp with a real Tk root (withdrawn)."""
+        tk = pytest.importorskip("tkinter")
+
+        # Mock camera so no real device is needed
+        cam = MagicMock()
+        cam.actual_width = 640
+        cam.actual_height = 480
+
+        with patch(
+            "robo_eye_sense.detector._apriltags_available",
+            return_value=False,
+        ):
+            detector = RoboEyeDetector(enable_qr=False, enable_laser=True)
+
+        root = tk.Tk()
+        root.withdraw()  # hide window during tests
+
+        from robo_eye_sense.gui import RoboEyeSenseApp
+
+        app = RoboEyeSenseApp(root, cam, detector)
+        yield app
+        root.destroy()
+
+    def test_constructs_without_error(self, app):
+        assert app is not None
+
+    def test_toggle_laser_off(self, app):
+        app._enable_laser.set(False)
+        app._on_toggle_laser()
+        assert app.detector._laser_detector is None
+
+    def test_toggle_laser_on(self, app):
+        app._enable_laser.set(False)
+        app._on_toggle_laser()
+        app._enable_laser.set(True)
+        app._on_toggle_laser()
+        assert app.detector._laser_detector is not None
+
+    def test_toggle_qr_off(self, app):
+        app._enable_qr.set(False)
+        app._on_toggle_qr()
+        assert app.detector._qr_detector is None
+
+    def test_toggle_qr_on(self, app):
+        app._enable_qr.set(False)
+        app._on_toggle_qr()
+        app._enable_qr.set(True)
+        app._on_toggle_qr()
+        assert app.detector._qr_detector is not None
+
+    def test_threshold_change_updates_detector(self, app):
+        app._laser_threshold.set(200)
+        app._on_threshold_change()
+        assert app.detector._laser_detector.brightness_threshold == 200
+
+    def test_on_close_sets_running_false(self, app):
+        # Patch destroy so it doesn't actually destroy during test fixture
+        app.root.destroy = MagicMock()
+        app._on_close()
+        assert app._running is False
