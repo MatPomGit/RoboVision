@@ -94,7 +94,7 @@ class RoboEyeSenseApp:
             else 240
         )
         _init_decimate = (
-            detector._april_detector._detector.quad_decimate
+            detector._april_detector.quad_decimate
             if detector._april_detector is not None
             else 2.0
         )

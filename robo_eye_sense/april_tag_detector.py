@@ -12,6 +12,7 @@ predictable on resource-constrained platforms.
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import warnings
 from typing import List, Optional
 
@@ -66,6 +67,9 @@ class AprilTagDetector:
             )
         import pupil_apriltags as apriltag  # type: ignore[import]
 
+        # Store the value here so the GUI can see it
+        self.quad_decimate = quad_decimate
+
         self._detector = apriltag.Detector(
             families=families,
             nthreads=nthreads,
@@ -107,3 +111,4 @@ class AprilTagDetector:
                 )
             )
         return detections
+        
