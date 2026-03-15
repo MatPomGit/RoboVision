@@ -61,3 +61,17 @@ class TestDetection:
         r = repr(d)
         assert "qr_code" in r
         assert "hello" in r
+
+
+def test_package_import_is_lazy_for_detector():
+    import importlib
+    import sys
+
+    sys.modules.pop("robo_eye_sense", None)
+    sys.modules.pop("robo_eye_sense.detector", None)
+
+    module = importlib.import_module("robo_eye_sense")
+
+    assert "robo_eye_sense.detector" not in sys.modules
+    assert hasattr(module, "Detection")
+    assert hasattr(module, "DetectionType")
