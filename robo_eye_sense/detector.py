@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
-from .april_tag_detector import AprilTagDetector, _apriltags_available
+from . import april_tag_detector
 from .laser_detector import LaserSpotDetector
 from .qr_detector import QRCodeDetector
 from .results import Detection, DetectionType
@@ -29,6 +29,13 @@ _COLOURS: Dict[DetectionType, Tuple[int, int, int]] = {
 
 # Length of axis arrows drawn at the detection centre
 _AXIS_LENGTH = 40
+
+
+
+
+def _apriltags_available() -> bool:
+    """Proxy helper so tests can patch either detector or april_tag module."""
+    return april_tag_detector._apriltags_available()
 
 
 def _compute_orientation(corners: List[Tuple[int, int]]) -> float:
@@ -123,13 +130,13 @@ class RoboEyeDetector:
         tracker_max_disappeared: int = 10,
         tracker_max_distance: int = 50,
     ) -> None:
-        self._april_detector: Optional[AprilTagDetector] = None
+        self._april_detector: Optional[april_tag_detector.AprilTagDetector] = None
         self._qr_detector: Optional[QRCodeDetector] = None
         self._laser_detector: Optional[LaserSpotDetector] = None
 
         if enable_apriltag:
             if _apriltags_available():
-                self._april_detector = AprilTagDetector(
+                self._april_detector = april_tag_detector.AprilTagDetector(
                     families=april_families,
                     quad_decimate=april_quad_decimate,
                 )
