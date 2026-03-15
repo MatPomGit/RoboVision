@@ -5,6 +5,10 @@ Run with a live camera::
 
     python main.py
 
+Run with the full GUI window::
+
+    python main.py --gui
+
 Run on a recorded video file::
 
     python main.py --source path/to/video.mp4
@@ -13,7 +17,7 @@ Run headless (no GUI window, print detections to stdout)::
 
     python main.py --headless
 
-Press **q** to quit the display window.
+Press **q** to quit the display window (non-GUI mode).
 """
 
 from __future__ import annotations
@@ -71,6 +75,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Run without a display window; print detections to stdout.",
     )
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="Launch the full tkinter GUI (overrides --headless).",
+    )
     return parser.parse_args(argv)
 
 
@@ -98,6 +107,26 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
+    # ── GUI mode ──────────────────────────────────────────────────────────
+    if args.gui:
+        try:
+            import tkinter as tk
+        except ImportError:  # pragma: no cover
+            print(
+                "ERROR: tkinter is not available. "
+                "Install it (e.g. sudo apt install python3-tk) to use --gui.",
+                file=sys.stderr,
+            )
+            return 1
+        from robo_eye_sense.gui import RoboEyeSenseApp
+
+        root = tk.Tk()
+        with cam:
+            app = RoboEyeSenseApp(root, cam, detector)
+            app.run()
+        return 0
+
+    # ── Headless / cv2.imshow mode ────────────────────────────────────────
     fps_counter = 0
     fps_display = 0.0
     t_fps = time.perf_counter()
