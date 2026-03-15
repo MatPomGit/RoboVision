@@ -79,7 +79,11 @@ class QRCodeDetector:
             text payload; ``corners`` are the four polygon vertices.
         """
         if self._backend == "pyzbar":
-            return self._detect_pyzbar(frame)
+            try:
+                return self._detect_pyzbar(frame)
+            except ImportError:
+                self._backend = "opencv"
+                self._cv_detector = cv2.QRCodeDetector()
         return self._detect_opencv(frame)
 
     # ------------------------------------------------------------------
