@@ -63,12 +63,15 @@ class TestDetection:
         assert "hello" in r
 
 
-def test_package_import_is_lazy_for_detector():
+def test_package_import_is_lazy_for_detector(monkeypatch):
     import importlib
     import sys
 
-    sys.modules.pop("robo_eye_sense", None)
-    sys.modules.pop("robo_eye_sense.detector", None)
+    # Work on a copy of sys.modules so this test does not affect other tests.
+    modules_copy = sys.modules.copy()
+    modules_copy.pop("robo_eye_sense", None)
+    modules_copy.pop("robo_eye_sense.detector", None)
+    monkeypatch.setattr(sys, "modules", modules_copy)
 
     module = importlib.import_module("robo_eye_sense")
 
