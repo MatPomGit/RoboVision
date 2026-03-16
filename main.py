@@ -111,6 +111,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:  # noqa: C901
     args = _parse_args(argv)
 
+    print(f"{APP_NAME} {__version__}")
+
     mode = DetectionMode(args.mode)
 
     detector = RoboEyeDetector(

@@ -45,6 +45,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageTk
 
+from . import APP_NAME, __version__
 from .camera import Camera
 from .detector import RoboEyeDetector, _compute_orientation
 from .results import Detection, DetectionMode, DetectionType

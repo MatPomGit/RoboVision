@@ -9,7 +9,7 @@ library), otherwise falls back to OpenCV's built-in
 from __future__ import annotations
 
 import importlib
-from typing import List
+from typing import List, Optional
 
 import cv2
 import numpy as np
@@ -43,7 +43,7 @@ class QRCodeDetector:
         If *force_backend* is ``"pyzbar"`` but pyzbar is not installed.
     """
 
-    def __init__(self, force_backend: str | None = None) -> None:
+    def __init__(self, force_backend: Optional[str] = None) -> None:
         if force_backend == "pyzbar":
             if not _pyzbar_available():
                 raise ValueError(
