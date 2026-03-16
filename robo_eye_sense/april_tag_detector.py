@@ -33,13 +33,17 @@ def _apriltags_available() -> bool:
     return _PUPIL_APRILTAGS_AVAILABLE
 
 
+_ALL_FAMILIES = "tag36h11 tag25h9 tag16h5 tag12h10"
+
+
 class AprilTagDetector:
     """Detect and decode AprilTag fiducial markers in a grayscale frame.
 
+    All four standard tag families (tag36h11, tag25h9, tag16h5, tag12h10)
+    are detected simultaneously.
+
     Parameters
     ----------
-    families:
-        Space-separated list of tag families to detect (e.g. ``"tag36h11"``).
     nthreads:
         Number of threads used internally by the detector.  Keep at ``1``
         on embedded platforms to avoid unpredictable CPU spikes.
@@ -56,7 +60,6 @@ class AprilTagDetector:
 
     def __init__(
         self,
-        families: str = "tag36h11",
         nthreads: int = 1,
         quad_decimate: float = 2.0,
     ) -> None:
@@ -71,7 +74,7 @@ class AprilTagDetector:
         self.quad_decimate = quad_decimate
 
         self._detector = apriltag.Detector(
-            families=families,
+            families=_ALL_FAMILIES,
             nthreads=nthreads,
             quad_decimate=quad_decimate,
             quad_sigma=0.0,
