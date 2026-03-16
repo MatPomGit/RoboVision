@@ -1,4 +1,4 @@
-# robo-eye-sense
+# robo-vision
 
 Lightweight real-time visual marker detection for mobile robots.
 
