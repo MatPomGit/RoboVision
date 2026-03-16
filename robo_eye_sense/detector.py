@@ -150,8 +150,6 @@ class RoboEyeDetector:
     mode:
         Operating mode.  See :class:`~robo_eye_sense.results.DetectionMode`
         for a description of each mode.
-    april_families:
-        AprilTag family string passed to :class:`~robo_eye_sense.april_tag_detector.AprilTagDetector`.
     april_quad_decimate:
         Down-sampling factor for AprilTag detection.  Higher values are
         faster but reduce detection range.
@@ -175,7 +173,6 @@ class RoboEyeDetector:
         enable_qr: bool = True,
         enable_laser: bool = True,
         mode: DetectionMode = DetectionMode.NORMAL,
-        april_families: str = "tag36h11",
         april_quad_decimate: float = 2.0,
         laser_brightness_threshold: int = 240,
         laser_target_area: int = 100,
@@ -195,7 +192,6 @@ class RoboEyeDetector:
         if enable_apriltag:
             if _apriltags_available():
                 self._april_detector = april_tag_detector.AprilTagDetector(
-                    families=april_families,
                     quad_decimate=april_quad_decimate,
                 )
             else:

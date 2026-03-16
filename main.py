@@ -74,11 +74,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Brightness threshold for laser-spot detection (0–255).",
     )
     parser.add_argument(
-        "--april-families",
-        default="tag36h11",
-        help="AprilTag family/families to detect (space-separated).",
-    )
-    parser.add_argument(
         "--april-decimate",
         type=float,
         default=2.0,
@@ -120,7 +115,6 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         enable_qr=not args.no_qr,
         enable_laser=not args.no_laser,
         mode=mode,
-        april_families=args.april_families,
         april_quad_decimate=args.april_decimate,
         laser_brightness_threshold=args.laser_threshold,
     )
