@@ -61,6 +61,13 @@ _MODE_DISPLAY: dict[str, DetectionMode] = {
 }
 _MODE_DISPLAY_INV: dict[DetectionMode, str] = {v: k for k, v in _MODE_DISPLAY.items()}
 
+# Short descriptions displayed below the combobox when a mode is active
+_MODE_DESCRIPTIONS: dict[DetectionMode, str] = {
+    DetectionMode.NORMAL: "Balanced – default detection pipeline.",
+    DetectionMode.FAST: "Speed-optimised – frame downscaled 50 %.",
+    DetectionMode.ROBUST: "Tracking-optimised – sharpening + Kalman.",
+}
+
 
 class RoboEyeSenseApp:
     """Tkinter application window for RoboEyeSense.
@@ -132,6 +139,11 @@ class RoboEyeSenseApp:
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
+        # Keyboard shortcuts for quick mode switching
+        self.root.bind("<Control-Key-1>", lambda _e: self._set_mode(DetectionMode.NORMAL))
+        self.root.bind("<Control-Key-2>", lambda _e: self._set_mode(DetectionMode.FAST))
+        self.root.bind("<Control-Key-3>", lambda _e: self._set_mode(DetectionMode.ROBUST))
+
     # ──────────────────────────────────────────────────────────────────────
     # UI construction
     # ──────────────────────────────────────────────────────────────────────
@@ -188,6 +200,25 @@ class RoboEyeSenseApp:
         )
         mode_combo.pack(anchor="w", pady=(2, 0))
         mode_combo.bind("<<ComboboxSelected>>", self._on_mode_change)
+
+        # Description of the currently selected mode
+        initial_desc = _MODE_DESCRIPTIONS.get(self.detector.mode, "")
+        self._mode_desc_var = tk.StringVar(value=initial_desc)
+        self._mode_desc_label = ttk.Label(
+            parent,
+            textvariable=self._mode_desc_var,
+            wraplength=180,
+            font=("", 8, "italic"),
+        )
+        self._mode_desc_label.pack(anchor="w", pady=(2, 0))
+
+        # Keyboard shortcut hint
+        ttk.Label(
+            parent,
+            text="Ctrl+1 / 2 / 3",
+            font=("", 7),
+            foreground="gray",
+        ).pack(anchor="w")
 
         # ── Detection modes ───────────────────────────────────────────────
         ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=4)
@@ -303,6 +334,13 @@ class RoboEyeSenseApp:
         ttk.Label(parent, textvariable=self._cam_fps_var).pack(anchor="w")
         ttk.Label(parent, textvariable=self._cam_res_var).pack(anchor="w")
 
+        # Current mode
+        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=4)
+        ttk.Label(parent, text="Mode", font=("", 9, "bold")).pack(anchor="w")
+        initial_label = _MODE_DISPLAY_INV.get(self.detector.mode, "Normal")
+        self._info_mode_var = tk.StringVar(value=initial_label)
+        ttk.Label(parent, textvariable=self._info_mode_var).pack(anchor="w")
+
         # Detected objects list
         ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=8)
         ttk.Label(parent, text="Detected objects", font=("", 9, "bold")).pack(
@@ -327,11 +365,20 @@ class RoboEyeSenseApp:
     # Control callbacks
     # ──────────────────────────────────────────────────────────────────────
 
+    def _set_mode(self, mode: DetectionMode) -> None:
+        """Programmatically switch to *mode* and update all UI elements."""
+        label = _MODE_DISPLAY_INV.get(mode, "Normal")
+        self._mode_var.set(label)
+        self._on_mode_change()
+
     def _on_mode_change(self, _event: Optional[object] = None) -> None:
         """Switch the detector's operating mode."""
         label = self._mode_var.get()
         new_mode = _MODE_DISPLAY.get(label, DetectionMode.NORMAL)
         self.detector.mode = new_mode
+        # Update the description label and info-panel indicator
+        self._mode_desc_var.set(_MODE_DESCRIPTIONS.get(new_mode, ""))
+        self._info_mode_var.set(label)
 
     def _on_toggle_april(self) -> None:
         """Enable or disable the AprilTag detector."""

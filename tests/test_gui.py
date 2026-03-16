@@ -286,3 +286,54 @@ class TestRoboEyeSenseApp:
         app._on_mode_change()
         assert app.detector.mode == DetectionMode.NORMAL
         assert app.detector._tracker.use_kalman is False
+
+    def test_mode_description_updates_on_change(self, app):
+        """Switching mode should update the description label."""
+        app._mode_var.set("Fast (low-power)")
+        app._on_mode_change()
+        assert "downscaled" in app._mode_desc_var.get().lower()
+
+        app._mode_var.set("Robust (motion-blur resistant)")
+        app._on_mode_change()
+        assert "kalman" in app._mode_desc_var.get().lower()
+
+    def test_info_panel_mode_updates_on_change(self, app):
+        """The info-panel mode indicator should reflect the active mode."""
+        assert app._info_mode_var.get() == "Normal"
+        app._mode_var.set("Fast (low-power)")
+        app._on_mode_change()
+        assert app._info_mode_var.get() == "Fast (low-power)"
+
+    def test_set_mode_helper(self, app):
+        """_set_mode() should update combobox, detector, and UI labels."""
+        from robo_eye_sense.results import DetectionMode
+
+        app._set_mode(DetectionMode.ROBUST)
+        assert app.detector.mode == DetectionMode.ROBUST
+        assert app._mode_var.get() == "Robust (motion-blur resistant)"
+        assert "kalman" in app._mode_desc_var.get().lower()
+        assert app._info_mode_var.get() == "Robust (motion-blur resistant)"
+
+    def test_keyboard_shortcut_switches_mode(self, app):
+        """Ctrl+1/2/3 key bindings should switch detector mode."""
+        from robo_eye_sense.results import DetectionMode
+
+        # event_generate requires a visible, focused window
+        app.root.deiconify()
+        app.root.update()
+        app.root.focus_force()
+        app.root.update()
+
+        app.root.event_generate("<Control-Key-2>", when="tail")
+        app.root.update()
+        assert app.detector.mode == DetectionMode.FAST
+
+        app.root.event_generate("<Control-Key-3>", when="tail")
+        app.root.update()
+        assert app.detector.mode == DetectionMode.ROBUST
+
+        app.root.event_generate("<Control-Key-1>", when="tail")
+        app.root.update()
+        assert app.detector.mode == DetectionMode.NORMAL
+
+        app.root.withdraw()
