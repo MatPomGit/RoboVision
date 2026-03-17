@@ -14,9 +14,9 @@ Layout
 |  [x] Laser  |                           | (list)    |
 |  ---------- |                           | --------- |
 |  Parameters |                           | Scenario  |
-|  Threshold  |                           | (text)    |
-|  Target area|                           |           |
-|  Sensitivity|                           |           |
+|  Threshold  |                           |[Offset]   |
+|  Target area|                           |  [SLAM]   |
+|  Sensitivity|                           |  (tabs)   |
 |  [ ] Overlay|                           |           |
 |  ---------- |                           |           |
 |  Scenario   |                           |           |
@@ -47,6 +47,7 @@ Usage::
 
 from __future__ import annotations
 
+import math
 import time
 import tkinter as tk
 from tkinter import ttk
@@ -54,11 +55,12 @@ from typing import List, Optional
 
 import cv2
 import numpy as np
-from PIL import Image, ImageTk
+from PIL import Image, ImageDraw, ImageTk
 
 from . import APP_NAME, __version__
 from .camera import Camera
 from .detector import RoboEyeDetector, _compute_orientation
+from .marker_map import MarkerPose3D, RobotPose3D, SlamCalibrator
 from .offset_scenario import CameraOffsetScenario, OffsetResult
 from .recorder import VideoRecorder
 from .results import Detection, DetectionMode, DetectionType
@@ -66,6 +68,14 @@ from .results import Detection, DetectionMode, DetectionType
 # How often (milliseconds) the frame-update callback is rescheduled.
 # 16 ms gives a ~60 Hz ceiling; the actual frame rate is limited by the camera.
 _UPDATE_INTERVAL_MS = 16  # ~60 Hz ceiling; actual rate is camera-limited
+
+# 3-D visualisation defaults
+_VIS3D_WIDTH = 200
+_VIS3D_HEIGHT = 200
+_VIS3D_BG = "#1a1a2e"
+_VIS3D_GRID_COLOR = "#334455"
+_VIS3D_MARKER_COLOR = "#00cc66"
+_VIS3D_CAMERA_COLOR = "#ff4444"
 
 # Human-readable labels shown in the mode combobox
 _MODE_DISPLAY: dict[str, DetectionMode] = {
@@ -81,6 +91,118 @@ _MODE_DESCRIPTIONS: dict[DetectionMode, str] = {
     DetectionMode.FAST: "Speed-optimised – frame downscaled 50 %.",
     DetectionMode.ROBUST: "Tracking-optimised – sharpening + Kalman.",
 }
+
+
+def render_3d_scene(
+    width: int,
+    height: int,
+    markers: List[MarkerPose3D],
+    robot: RobotPose3D,
+) -> Image.Image:
+    """Render a top-down 3-D scene as a PIL Image.
+
+    The scene shows markers as green squares and the robot/camera as a red
+    triangle pointing in its yaw direction.  A simple grid is drawn as
+    background.
+
+    Parameters
+    ----------
+    width, height:
+        Output image size in pixels.
+    markers:
+        List of marker poses to draw.
+    robot:
+        Current robot pose (the camera).
+
+    Returns
+    -------
+    PIL.Image.Image
+        Rendered scene.
+    """
+    img = Image.new("RGB", (width, height), _VIS3D_BG)
+    draw = ImageDraw.Draw(img)
+
+    # Collect all positions to compute auto-scale
+    all_x: List[float] = []
+    all_z: List[float] = []
+    for m in markers:
+        all_x.append(m.position[0])
+        all_z.append(m.position[2])
+    if robot.visible_markers > 0:
+        all_x.append(robot.position[0])
+        all_z.append(robot.position[2])
+
+    if not all_x:
+        # Nothing to draw — return blank with grid
+        _draw_grid(draw, width, height, 1.0, 0.0, 0.0)
+        return img
+
+    cx = (min(all_x) + max(all_x)) / 2.0
+    cz = (min(all_z) + max(all_z)) / 2.0
+    span = max(max(all_x) - min(all_x), max(all_z) - min(all_z), 20.0)
+    scale = min(width, height) * 0.7 / span
+
+    _draw_grid(draw, width, height, scale, cx, cz)
+
+    # Draw markers
+    for m in markers:
+        sx = width / 2.0 + (m.position[0] - cx) * scale
+        sy = height / 2.0 + (m.position[2] - cz) * scale
+        r = max(3, int(4 * scale / 20))
+        draw.rectangle([sx - r, sy - r, sx + r, sy + r], fill=_VIS3D_MARKER_COLOR)
+        label = m.marker_id
+        draw.text((sx + r + 2, sy - r), label, fill=_VIS3D_MARKER_COLOR)
+
+    # Draw robot/camera as a triangle
+    if robot.visible_markers > 0:
+        rx = width / 2.0 + (robot.position[0] - cx) * scale
+        ry = height / 2.0 + (robot.position[2] - cz) * scale
+        yaw_rad = math.radians(robot.orientation[2])
+        size = max(5, int(6 * scale / 20))
+        # Triangle pointing in yaw direction
+        pts = [
+            (rx + size * math.cos(yaw_rad), ry + size * math.sin(yaw_rad)),
+            (
+                rx + size * math.cos(yaw_rad + 2.4),
+                ry + size * math.sin(yaw_rad + 2.4),
+            ),
+            (
+                rx + size * math.cos(yaw_rad - 2.4),
+                ry + size * math.sin(yaw_rad - 2.4),
+            ),
+        ]
+        draw.polygon(pts, fill=_VIS3D_CAMERA_COLOR)
+
+    return img
+
+
+def _draw_grid(
+    draw: ImageDraw.ImageDraw,
+    w: int,
+    h: int,
+    scale: float,
+    cx: float,
+    cz: float,
+) -> None:
+    """Draw a faint background grid on the scene."""
+    grid_step = 10.0  # cm
+    # Clamp grid range to prevent excessive drawing
+    half_w = w / (2.0 * max(scale, 1e-6))
+    half_h = h / (2.0 * max(scale, 1e-6))
+    x_min = cx - half_w
+    x_max = cx + half_w
+    z_min = cz - half_h
+    z_max = cz + half_h
+    x = math.floor(x_min / grid_step) * grid_step
+    while x <= x_max:
+        sx = int(w / 2.0 + (x - cx) * scale)
+        draw.line([(sx, 0), (sx, h)], fill=_VIS3D_GRID_COLOR, width=1)
+        x += grid_step
+    z = math.floor(z_min / grid_step) * grid_step
+    while z <= z_max:
+        sy = int(h / 2.0 + (z - cz) * scale)
+        draw.line([(0, sy), (w, sy)], fill=_VIS3D_GRID_COLOR, width=1)
+        z += grid_step
 
 
 class RoboEyeSenseApp:
@@ -141,6 +263,11 @@ class RoboEyeSenseApp:
         self._scenario: Optional[CameraOffsetScenario] = None
         self._scenario_active = False
         self._last_offset_result: Optional[OffsetResult] = None
+
+        # SLAM state
+        self._slam_calibrator: Optional[SlamCalibrator] = None
+        self._slam_active = False
+        self._last_robot_pose = RobotPose3D()
 
         # Recording state
         self._recorder: Optional[VideoRecorder] = None
@@ -328,7 +455,7 @@ class RoboEyeSenseApp:
 
         # ── Scenario ─────────────────────────────────────────────────────
         ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=8)
-        ttk.Label(parent, text="Scenario", font=("", 9, "bold")).pack(anchor="w")
+        ttk.Label(parent, text="Offset Scenario", font=("", 9, "bold")).pack(anchor="w")
 
         self._scenario_start_btn = ttk.Button(
             parent,
@@ -352,6 +479,33 @@ class RoboEyeSenseApp:
             state="disabled",
         )
         self._scenario_reset_btn.pack(fill="x", pady=2)
+
+        # ── SLAM scenario ─────────────────────────────────────────────────
+        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=8)
+        ttk.Label(parent, text="SLAM Scenario", font=("", 9, "bold")).pack(anchor="w")
+
+        self._slam_start_btn = ttk.Button(
+            parent,
+            text="Start SLAM",
+            command=self._on_slam_start,
+        )
+        self._slam_start_btn.pack(fill="x", pady=(4, 2))
+
+        self._slam_reset_btn = ttk.Button(
+            parent,
+            text="Reset SLAM",
+            command=self._on_slam_reset,
+            state="disabled",
+        )
+        self._slam_reset_btn.pack(fill="x", pady=2)
+
+        self._slam_save_btn = ttk.Button(
+            parent,
+            text="Save map…",
+            command=self._on_slam_save,
+            state="disabled",
+        )
+        self._slam_save_btn.pack(fill="x", pady=2)
 
         # ── Recording ─────────────────────────────────────────────────────
         ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=8)
@@ -424,13 +578,20 @@ class RoboEyeSenseApp:
         self._detections_list.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        # Scenario information panel
+        # Scenario information panel — tabbed notebook
         ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=8)
         ttk.Label(parent, text="Scenario", font=("", 9, "bold")).pack(
             anchor="w"
         )
 
-        scenario_frame = ttk.Frame(parent)
+        self._scenario_notebook = ttk.Notebook(parent)
+        self._scenario_notebook.pack(fill="both", expand=True)
+
+        # ── Offset tab ────────────────────────────────────────────────────
+        offset_tab = ttk.Frame(self._scenario_notebook, padding=4)
+        self._scenario_notebook.add(offset_tab, text="Offset")
+
+        scenario_frame = ttk.Frame(offset_tab)
         scenario_frame.pack(fill="both", expand=True)
         scenario_scroll = ttk.Scrollbar(scenario_frame, orient="vertical")
         self._scenario_text = tk.Text(
@@ -447,9 +608,66 @@ class RoboEyeSenseApp:
         scenario_scroll.pack(side="right", fill="y")
         self._set_scenario_text("Scenario not started.\nClick 'Start scenario' to begin.")
 
+        # ── SLAM tab ─────────────────────────────────────────────────────
+        slam_tab = ttk.Frame(self._scenario_notebook, padding=4)
+        self._scenario_notebook.add(slam_tab, text="SLAM")
+        self._build_slam_tab(slam_tab)
+
     # ──────────────────────────────────────────────────────────────────────
     # Control callbacks
     # ──────────────────────────────────────────────────────────────────────
+
+    def _build_slam_tab(self, parent: ttk.Frame) -> None:
+        """Build the SLAM scenario tab contents."""
+        # Robot pose section
+        ttk.Label(parent, text="Robot pose", font=("", 9, "bold")).pack(
+            anchor="w"
+        )
+        self._slam_robot_var = tk.StringVar(
+            value="Position: –\nOrientation: –"
+        )
+        ttk.Label(
+            parent,
+            textvariable=self._slam_robot_var,
+            font=("Courier", 8),
+            wraplength=200,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 4))
+
+        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=4)
+
+        # Marker list section
+        ttk.Label(parent, text="Markers", font=("", 9, "bold")).pack(
+            anchor="w"
+        )
+        marker_frame = ttk.Frame(parent)
+        marker_frame.pack(fill="x")
+        marker_scroll = ttk.Scrollbar(marker_frame, orient="vertical")
+        self._slam_markers_list = tk.Listbox(
+            marker_frame,
+            yscrollcommand=marker_scroll.set,
+            font=("Courier", 7),
+            selectmode=tk.SINGLE,
+            height=6,
+        )
+        marker_scroll.config(command=self._slam_markers_list.yview)
+        self._slam_markers_list.pack(side="left", fill="both", expand=True)
+        marker_scroll.pack(side="right", fill="y")
+
+        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=4)
+
+        # 3-D visualisation canvas
+        ttk.Label(parent, text="3D View", font=("", 9, "bold")).pack(
+            anchor="w"
+        )
+        self._slam_3d_canvas = tk.Canvas(
+            parent,
+            width=_VIS3D_WIDTH,
+            height=_VIS3D_HEIGHT,
+            bg=_VIS3D_BG,
+        )
+        self._slam_3d_canvas.pack(fill="both", expand=True)
+        self._slam_3d_image_id: Optional[int] = None
 
     def _set_mode(self, mode: DetectionMode) -> None:
         """Programmatically switch to *mode* and update all UI elements."""
@@ -609,6 +827,54 @@ class RoboEyeSenseApp:
             "AprilTags visible.\n\n"
             "Then click 'Capture reference'."
         )
+
+    # ── SLAM callbacks ────────────────────────────────────────────────────
+
+    def _on_slam_start(self) -> None:
+        """Start or stop the SLAM map-building scenario."""
+        if self._slam_active:
+            self._slam_active = False
+            self._slam_calibrator = None
+            self._last_robot_pose = RobotPose3D()
+            self._slam_start_btn.config(text="Start SLAM")
+            self._slam_reset_btn.config(state="disabled")
+            self._slam_save_btn.config(state="disabled")
+            self._slam_robot_var.set("Position: –\nOrientation: –")
+            self._slam_markers_list.delete(0, tk.END)
+        else:
+            self._slam_calibrator = SlamCalibrator(tag_size_cm=5.0)
+            self._slam_active = True
+            self._last_robot_pose = RobotPose3D()
+            self._slam_start_btn.config(text="Stop SLAM")
+            self._slam_reset_btn.config(state="normal")
+            self._slam_save_btn.config(state="normal")
+            self._slam_robot_var.set("SLAM started.\nWaiting for markers…")
+            # Switch to SLAM tab
+            self._scenario_notebook.select(1)
+
+    def _on_slam_reset(self) -> None:
+        """Reset the SLAM calibrator (clear the marker map)."""
+        if self._slam_calibrator is None:
+            return
+        self._slam_calibrator.reset()
+        self._last_robot_pose = RobotPose3D()
+        self._slam_robot_var.set("Map cleared.\nWaiting for markers…")
+        self._slam_markers_list.delete(0, tk.END)
+
+    def _on_slam_save(self) -> None:
+        """Save the current marker map to a JSON file."""
+        if self._slam_calibrator is None:
+            return
+        from tkinter import filedialog
+
+        path = filedialog.asksaveasfilename(
+            title="Save marker map as",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        self._slam_calibrator.marker_map.save(path)
 
     # ── Recording callbacks ───────────────────────────────────────────────
 
@@ -795,6 +1061,12 @@ class RoboEyeSenseApp:
             except RuntimeError:
                 pass
 
+        # SLAM: continuous map building
+        if self._slam_active and self._slam_calibrator is not None:
+            robot_pose = self._slam_calibrator.process_detections(detections)
+            self._last_robot_pose = robot_pose
+            self._update_slam_display(robot_pose)
+
     def _update_scenario_display(self, result: OffsetResult) -> None:
         """Refresh the scenario text widget with the latest offset data."""
         lines = []
@@ -823,6 +1095,60 @@ class RoboEyeSenseApp:
                 lines.append(f"  tag {tag_id:>4s}: {dist:.1f} cm")
 
         self._set_scenario_text("\n".join(lines))
+
+    def _update_slam_display(self, robot_pose: RobotPose3D) -> None:
+        """Refresh the SLAM tab with robot pose, markers, and 3-D view."""
+        if self._slam_calibrator is None:
+            return
+
+        # Robot pose
+        rx, ry, rz = robot_pose.position
+        ro, rp, ryaw = robot_pose.orientation
+        vis = robot_pose.visible_markers
+        if vis > 0:
+            self._slam_robot_var.set(
+                f"Pos: ({rx:+.1f}, {ry:+.1f}, {rz:+.1f}) cm\n"
+                f"Ori: ({ro:+.1f}, {rp:+.1f}, {ryaw:+.1f})°\n"
+                f"Visible markers: {vis}"
+            )
+        else:
+            self._slam_robot_var.set(
+                "No mapped markers visible.\n"
+                "Move camera to see markers."
+            )
+
+        # Marker list
+        mmap = self._slam_calibrator.marker_map
+        self._slam_markers_list.delete(0, tk.END)
+        for m in mmap.markers():
+            px, py, pz = m.position
+            mr, mp, my = m.orientation
+            line = (
+                f"{m.marker_id:>4s} "
+                f"pos=({px:+.1f},{py:+.1f},{pz:+.1f}) "
+                f"ori=({mr:+.1f},{mp:+.1f},{my:+.1f})° "
+                f"n={m.observations}"
+            )
+            self._slam_markers_list.insert(tk.END, line)
+
+        # 3-D visualisation
+        cw = self._slam_3d_canvas.winfo_width()
+        ch = self._slam_3d_canvas.winfo_height()
+        if cw < 2 or ch < 2:
+            cw, ch = _VIS3D_WIDTH, _VIS3D_HEIGHT
+        scene = render_3d_scene(cw, ch, mmap.markers(), robot_pose)
+        self._slam_3d_tk_image = ImageTk.PhotoImage(image=scene)
+        cx = cw // 2
+        cy = ch // 2
+        if self._slam_3d_image_id is None:
+            self._slam_3d_image_id = self._slam_3d_canvas.create_image(
+                cx, cy, anchor="center", image=self._slam_3d_tk_image
+            )
+        else:
+            self._slam_3d_canvas.coords(self._slam_3d_image_id, cx, cy)
+            self._slam_3d_canvas.itemconfigure(
+                self._slam_3d_image_id, image=self._slam_3d_tk_image
+            )
 
     # ──────────────────────────────────────────────────────────────────────
     # Lifecycle

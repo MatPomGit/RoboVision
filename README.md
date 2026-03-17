@@ -106,6 +106,93 @@ python main.py --mode robust
 python main.py --mode fast --no-apriltag --no-qr --width 320 --height 240
 ```
 
+#### Scenariusz Offset (kalibracja przesunięcia kamery)
+
+```bash
+# Interaktywny – ręczne ustawienie odniesienia, przesunięcie, obliczenie wektora
+python main.py --scenario offset
+
+# Bezgłowy – automatyczne przechwycenie i obliczenie
+python main.py --scenario offset --headless
+
+# Z nagrywaniem
+python main.py --scenario offset --record offset_session.mp4
+```
+
+#### Scenariusz SLAM (budowanie mapy markerów)
+
+```bash
+# Interaktywny – okno OpenCV z nakładką SLAM
+python main.py --scenario slam
+
+# Bezgłowy – tylko logi pozycji robota w stdout
+python main.py --scenario slam --headless
+
+# Zapis mapy do niestandardowego pliku
+python main.py --scenario slam --map-file my_map.json
+
+# Z nagrywaniem
+python main.py --scenario slam --record slam_session.mp4
+```
+
+W trybie GUI (``--gui``) scenariusze Offset i SLAM dostępne są jako
+zakładki w panelu informacyjnym po prawej stronie. Zakładka **SLAM**
+wyświetla:
+
+- **Pozycję i orientację robota** (6-DoF) w czasie rzeczywistym.
+- **Listę wykrytych markerów** z ich pozycjami, orientacjami oraz liczbą
+  obserwacji.
+- **Wizualizację 3-D** zrekonstruowanej przestrzeni (widok z góry) wraz
+  z pozycją kamery.
+
+---
+
+## Konfiguracje środowiska
+
+Poniższa tabela przedstawia wszystkie dostępne parametry wiersza poleceń
+wraz z ich wartościami domyślnymi i opisem.
+
+| Parametr | Domyślnie | Opis |
+|---|---|---|
+| `--source INDEX\|PATH` | `0` | Indeks kamery (0, 1, …) lub ścieżka do pliku/strumienia wideo. |
+| `--width W` | `640` | Szerokość klatki w pikselach. |
+| `--height H` | `480` | Wysokość klatki w pikselach. |
+| `--mode normal\|fast\|robust` | `normal` | Tryb detekcji: *normal* – zrównoważony; *fast* – 50% rozdzielczości; *robust* – wyostrzanie + Kalman. |
+| `--no-apriltag` | *(włączony)* | Wyłącza detekcję AprilTag. |
+| `--qr` | *(wyłączony)* | Włącza detekcję kodów QR. |
+| `--laser` | *(wyłączony)* | Włącza detekcję punktu lasera. |
+| `--laser-threshold 0–255` | `240` | Próg jasności dla detekcji lasera. |
+| `--headless` | *(wył.)* | Praca bez okna wyświetlania – wynik na stdout. |
+| `--gui` | *(wył.)* | Uruchomienie pełnego GUI Tkinter (wymaga `python3-tk`). |
+| `--record FILE` | *(brak)* | Nagrywanie strumienia do pliku MP4. |
+| `--scenario offset\|slam` | *(brak)* | Uruchomienie scenariusza: *offset* – kalibracja przesunięcia; *slam* – budowanie mapy markerów. |
+| `--map-file FILE` | `marker_map.json` | Ścieżka do pliku JSON z mapą markerów (zapis/odczyt). |
+
+### Przykładowe konfiguracje
+
+```bash
+# 1. Detekcja domyślna – kamera 0, AprilTag włączony, okno OpenCV
+python main.py
+
+# 2. Tryb szybki, detekcja lasera, niska rozdzielczość
+python main.py --mode fast --laser --width 320 --height 240
+
+# 3. Tryb robuśny, detekcja QR + AprilTag, nagrywanie
+python main.py --mode robust --qr --record session.mp4
+
+# 4. GUI ze wszystkimi detektorami
+python main.py --gui --qr --laser
+
+# 5. SLAM bezgłowy z plikiem wideo
+python main.py --scenario slam --source video.mp4 --headless --map-file map.json
+
+# 6. Offset w trybie headless
+python main.py --scenario offset --headless
+
+# 7. Kamera USB #2, tryb robuśny, GUI
+python main.py --source 2 --mode robust --gui
+```
+
 ---
 
 ## Architektura
@@ -120,7 +207,10 @@ robo_eye_sense/
 ├── laser_detector.py    # Brightness threshold + size/circularity filters
 ├── detector.py          # RoboEyeDetector – orchestrates all sub-detectors
 ├── camera.py            # VideoCapture wrapper (context manager)
-└── gui.py               # Tkinter control-panel GUI (launched via --gui)
+├── offset_scenario.py   # Camera-offset calibration scenario
+├── marker_map.py        # SLAM marker map building + robot localisation
+├── recorder.py          # Video recording utility (MP4)
+└── gui.py               # Tkinter GUI (Offset + SLAM tabs, 3-D visualisation)
 main.py                  # CLI entry point
 ```
 
