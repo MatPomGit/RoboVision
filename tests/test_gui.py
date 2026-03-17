@@ -458,3 +458,92 @@ class TestRoboEyeSenseApp:
         app.root.destroy = MagicMock()
         app._on_close()
         assert app._recorder is None
+
+    # ── SLAM callbacks ────────────────────────────────────────────────────
+
+    def test_slam_initially_inactive(self, app):
+        assert app._slam_active is False
+        assert app._slam_calibrator is None
+
+    def test_slam_start_activates(self, app):
+        app._on_slam_start()
+        assert app._slam_active is True
+        assert app._slam_calibrator is not None
+        assert "Stop" in app._slam_start_btn.cget("text")
+
+    def test_slam_stop_deactivates(self, app):
+        app._on_slam_start()
+        app._on_slam_start()  # toggle off
+        assert app._slam_active is False
+        assert app._slam_calibrator is None
+        assert "Start" in app._slam_start_btn.cget("text")
+
+    def test_slam_reset_clears_map(self, app):
+        app._on_slam_start()
+        assert app._slam_calibrator is not None
+        app._on_slam_reset()
+        assert len(app._slam_calibrator.marker_map) == 0
+
+    def test_slam_save_button_enabled_when_active(self, app):
+        app._on_slam_start()
+        assert str(app._slam_save_btn.cget("state")) != "disabled"
+
+    def test_slam_save_button_disabled_when_inactive(self, app):
+        assert str(app._slam_save_btn.cget("state")) == "disabled"
+
+    def test_scenario_notebook_exists(self, app):
+        """The info panel should contain a tabbed notebook."""
+        assert hasattr(app, "_scenario_notebook")
+        # There should be at least 2 tabs: Offset and SLAM
+        assert app._scenario_notebook.index("end") == 2
+
+    def test_slam_start_switches_to_slam_tab(self, app):
+        """Starting SLAM should switch the notebook to the SLAM tab."""
+        app._on_slam_start()
+        assert app._scenario_notebook.index("current") == 1
+
+
+# ---------------------------------------------------------------------------
+# render_3d_scene
+# ---------------------------------------------------------------------------
+
+
+class TestRender3dScene:
+
+    @pytest.fixture(autouse=True)
+    def _skip_no_tk(self):
+        pytest.importorskip("tkinter")
+
+    def test_returns_pil_image(self):
+        from robo_eye_sense.gui import render_3d_scene
+        from robo_eye_sense.marker_map import MarkerPose3D, RobotPose3D
+
+        img = render_3d_scene(200, 200, [], RobotPose3D())
+        from PIL import Image as PILImage
+        assert isinstance(img, PILImage.Image)
+        assert img.size == (200, 200)
+
+    def test_with_markers_and_robot(self):
+        from robo_eye_sense.gui import render_3d_scene
+        from robo_eye_sense.marker_map import MarkerPose3D, RobotPose3D
+
+        markers = [
+            MarkerPose3D(marker_id="1", position=(10.0, 0.0, 20.0)),
+            MarkerPose3D(marker_id="2", position=(-5.0, 0.0, 15.0)),
+        ]
+        robot = RobotPose3D(
+            position=(0.0, 0.0, 0.0),
+            orientation=(0.0, 0.0, 45.0),
+            visible_markers=2,
+        )
+        img = render_3d_scene(200, 200, markers, robot)
+        assert img.size == (200, 200)
+
+    def test_single_marker_no_robot(self):
+        from robo_eye_sense.gui import render_3d_scene
+        from robo_eye_sense.marker_map import MarkerPose3D, RobotPose3D
+
+        markers = [MarkerPose3D(marker_id="42", position=(0.0, 0.0, 0.0))]
+        robot = RobotPose3D()
+        img = render_3d_scene(150, 100, markers, robot)
+        assert img.size == (150, 100)
