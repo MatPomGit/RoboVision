@@ -179,3 +179,57 @@ class TestLaserSpotDetector:
         detector.detect(bright_spot_frame)
         h, w = bright_spot_frame.shape[:2]
         assert detector.last_threshold_mask.shape == (h, w)
+
+    # ------------------------------------------------------------------
+    # Parameter validation
+    # ------------------------------------------------------------------
+
+    def test_invalid_brightness_threshold_too_high(self):
+        with pytest.raises(ValueError, match="brightness_threshold"):
+            LaserSpotDetector(brightness_threshold=256)
+
+    def test_invalid_brightness_threshold_negative(self):
+        with pytest.raises(ValueError, match="brightness_threshold"):
+            LaserSpotDetector(brightness_threshold=-1)
+
+    def test_invalid_min_area_negative(self):
+        with pytest.raises(ValueError, match="min_area"):
+            LaserSpotDetector(min_area=-1)
+
+    def test_invalid_max_area_less_than_min_area(self):
+        with pytest.raises(ValueError, match="max_area"):
+            LaserSpotDetector(min_area=100, max_area=50)
+
+    def test_invalid_max_area_equal_to_min_area(self):
+        with pytest.raises(ValueError, match="max_area"):
+            LaserSpotDetector(min_area=100, max_area=100)
+
+    # ------------------------------------------------------------------
+    # Extracted helper methods
+    # ------------------------------------------------------------------
+
+    def test_compute_effective_area_bounds_low_sensitivity(self):
+        """Low sensitivity produces a tight area window around target_area."""
+        det = self._detector(target_area=100, sensitivity=0, min_area=4, max_area=1000)
+        lo, hi = det._compute_effective_area_bounds()
+        assert lo > 80  # tight window
+        assert hi < 120
+
+    def test_compute_effective_area_bounds_high_sensitivity(self):
+        """High sensitivity produces a wide area window."""
+        det = self._detector(target_area=100, sensitivity=100, min_area=4, max_area=1000)
+        lo, hi = det._compute_effective_area_bounds()
+        assert lo <= 10  # wide window
+        assert hi >= 900
+
+    def test_compute_effective_circularity_zero_sensitivity(self):
+        """At sensitivity=0 circularity threshold should be ~0.8."""
+        det = self._detector(sensitivity=0, min_circularity=0.2)
+        circ = det._compute_effective_circularity()
+        assert abs(circ - 0.8) < 0.01
+
+    def test_compute_effective_circularity_full_sensitivity(self):
+        """At sensitivity=100 circularity threshold should equal min_circularity."""
+        det = self._detector(sensitivity=100, min_circularity=0.2)
+        circ = det._compute_effective_circularity()
+        assert abs(circ - 0.2) < 0.01

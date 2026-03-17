@@ -343,3 +343,102 @@ class TestRobustMode:
         d = self._make_detector()
         result = d.draw_detections(frame.copy(), [])
         assert result.shape == frame.shape
+
+
+# ---------------------------------------------------------------------------
+# Public detector-management API
+# ---------------------------------------------------------------------------
+
+
+class TestDetectorPublicAPI:
+    """Tests for the public enable_*/disable_* methods and properties."""
+
+    @staticmethod
+    def _make_detector(**kwargs):
+        with patch(
+            "robo_eye_sense.april_tag_detector._apriltags_available",
+            return_value=False,
+        ):
+            return RoboEyeDetector(
+                enable_apriltag=False,
+                enable_qr=False,
+                enable_laser=False,
+                **kwargs,
+            )
+
+    # ── State property tests ─────────────────────────────────────────────
+
+    def test_april_enabled_false_when_disabled(self):
+        d = self._make_detector()
+        assert d.april_enabled is False
+
+    def test_qr_enabled_false_when_disabled(self):
+        d = self._make_detector()
+        assert d.qr_enabled is False
+
+    def test_laser_enabled_false_when_disabled(self):
+        d = self._make_detector()
+        assert d.laser_enabled is False
+
+    def test_laser_detector_none_when_disabled(self):
+        d = self._make_detector()
+        assert d.laser_detector is None
+
+    # ── QR toggle ────────────────────────────────────────────────────────
+
+    def test_enable_qr(self):
+        d = self._make_detector()
+        d.enable_qr()
+        assert d.qr_enabled is True
+
+    def test_disable_qr(self):
+        d = self._make_detector()
+        d.enable_qr()
+        d.disable_qr()
+        assert d.qr_enabled is False
+
+    def test_enable_qr_idempotent(self):
+        d = self._make_detector()
+        d.enable_qr()
+        d.enable_qr()
+        assert d.qr_enabled is True
+
+    # ── Laser toggle ─────────────────────────────────────────────────────
+
+    def test_enable_laser(self):
+        d = self._make_detector()
+        d.enable_laser()
+        assert d.laser_enabled is True
+        assert d.laser_detector is not None
+
+    def test_disable_laser(self):
+        d = self._make_detector()
+        d.enable_laser()
+        d.disable_laser()
+        assert d.laser_enabled is False
+        assert d.laser_detector is None
+
+    def test_enable_laser_with_custom_params(self):
+        d = self._make_detector()
+        d.enable_laser(brightness_threshold=200, target_area=50, sensitivity=80)
+        assert d.laser_detector is not None
+        assert d.laser_detector.brightness_threshold == 200
+        assert d.laser_detector.target_area == 50
+        assert d.laser_detector.sensitivity == 80
+
+    # ── AprilTag toggle (mocked availability) ────────────────────────────
+
+    def test_enable_april_returns_false_when_unavailable(self):
+        d = self._make_detector()
+        with patch(
+            "robo_eye_sense.detector._apriltags_available",
+            return_value=False,
+        ):
+            result = d.enable_april()
+        assert result is False
+        assert d.april_enabled is False
+
+    def test_disable_april(self):
+        d = self._make_detector()
+        d.disable_april()
+        assert d.april_enabled is False

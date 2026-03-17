@@ -251,6 +251,70 @@ class RoboEyeDetector:
         self._tracker.use_kalman = (value == DetectionMode.ROBUST)
 
     # ------------------------------------------------------------------
+    # Public detector-state API
+    # ------------------------------------------------------------------
+
+    @property
+    def april_enabled(self) -> bool:
+        """Whether AprilTag detection is currently active."""
+        return self._april_detector is not None
+
+    @property
+    def qr_enabled(self) -> bool:
+        """Whether QR-code detection is currently active."""
+        return self._qr_detector is not None
+
+    @property
+    def laser_enabled(self) -> bool:
+        """Whether laser-spot detection is currently active."""
+        return self._laser_detector is not None
+
+    @property
+    def laser_detector(self) -> Optional[LaserSpotDetector]:
+        """The active :class:`LaserSpotDetector`, or ``None`` if disabled."""
+        return self._laser_detector
+
+    def enable_april(self) -> bool:
+        """Enable the AprilTag detector.  Returns ``True`` on success."""
+        if self._april_detector is not None:
+            return True
+        if not _apriltags_available():
+            return False
+        self._april_detector = april_tag_detector.AprilTagDetector()
+        return True
+
+    def disable_april(self) -> None:
+        """Disable the AprilTag detector."""
+        self._april_detector = None
+
+    def enable_qr(self) -> None:
+        """Enable the QR-code detector."""
+        if self._qr_detector is None:
+            self._qr_detector = QRCodeDetector()
+
+    def disable_qr(self) -> None:
+        """Disable the QR-code detector."""
+        self._qr_detector = None
+
+    def enable_laser(
+        self,
+        brightness_threshold: int = 240,
+        target_area: int = 100,
+        sensitivity: int = 50,
+    ) -> None:
+        """Enable the laser-spot detector with the given parameters."""
+        if self._laser_detector is None:
+            self._laser_detector = LaserSpotDetector(
+                brightness_threshold=brightness_threshold,
+                target_area=target_area,
+                sensitivity=sensitivity,
+            )
+
+    def disable_laser(self) -> None:
+        """Disable the laser-spot detector."""
+        self._laser_detector = None
+
+    # ------------------------------------------------------------------
     # Core processing
     # ------------------------------------------------------------------
 
@@ -276,14 +340,35 @@ class RoboEyeDetector:
         List[Detection]
             All detections found, each with a populated ``track_id``.
         """
+        # FAST mode: downscale the frame before detection
         if self._mode == DetectionMode.FAST:
-            return self._process_frame_fast(frame)
-        if self._mode == DetectionMode.ROBUST:
-            return self._process_frame_robust(frame)
-        return self._process_frame_normal(frame)
+            h, w = frame.shape[:2]
+            frame = cv2.resize(
+                frame,
+                (max(1, int(w * _FAST_SCALE)), max(1, int(h * _FAST_SCALE))),
+            )
 
-    def _process_frame_normal(self, frame: np.ndarray) -> List[Detection]:
-        """Run the standard detection pipeline (NORMAL mode)."""
+        # ROBUST mode: sharpen to counteract motion blur
+        if self._mode == DetectionMode.ROBUST:
+            frame = _sharpen_frame(frame)
+
+        detections = self._run_detectors(frame)
+
+        # FAST mode: scale coordinates back to original resolution
+        if self._mode == DetectionMode.FAST:
+            inv = 1.0 / _FAST_SCALE
+            for d in detections:
+                d.center = (int(d.center[0] * inv), int(d.center[1] * inv))
+                d.corners = [(int(x * inv), int(y * inv)) for x, y in d.corners]
+
+        self._tracker.update(detections)
+        return detections
+
+    def _run_detectors(self, frame: np.ndarray) -> List[Detection]:
+        """Run all enabled sub-detectors on *frame* and return raw results.
+
+        This is the common detection step shared by every pipeline mode.
+        """
         detections: List[Detection] = []
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -294,61 +379,6 @@ class RoboEyeDetector:
         if self._laser_detector is not None:
             detections.extend(self._laser_detector.detect(frame))
 
-        self._tracker.update(detections)
-        return detections
-
-    def _process_frame_fast(self, frame: np.ndarray) -> List[Detection]:
-        """Downscaled detection pipeline (FAST mode).
-
-        Resizes *frame* to ``_FAST_SCALE`` of its original dimensions before
-        running all detectors, then scales every detected coordinate back to
-        the original resolution.  This reduces the number of processed pixels
-        by approximately ``(1 - _FAST_SCALE²) × 100 %``.
-        """
-        h, w = frame.shape[:2]
-        small = cv2.resize(
-            frame,
-            (max(1, int(w * _FAST_SCALE)), max(1, int(h * _FAST_SCALE))),
-        )
-
-        detections: List[Detection] = []
-        gray_small = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-
-        if self._april_detector is not None:
-            detections.extend(self._april_detector.detect(gray_small))
-        if self._qr_detector is not None:
-            detections.extend(self._qr_detector.detect(small))
-        if self._laser_detector is not None:
-            detections.extend(self._laser_detector.detect(small))
-
-        # Scale coordinates back to original resolution
-        inv = 1.0 / _FAST_SCALE
-        for d in detections:
-            d.center = (int(d.center[0] * inv), int(d.center[1] * inv))
-            d.corners = [(int(x * inv), int(y * inv)) for x, y in d.corners]
-
-        self._tracker.update(detections)
-        return detections
-
-    def _process_frame_robust(self, frame: np.ndarray) -> List[Detection]:
-        """Sharpened detection pipeline with Kalman tracking (ROBUST mode).
-
-        Applies an unsharp-mask sharpening filter to *frame* before passing
-        it through the standard detection pipeline.  The tracker (already
-        configured with ``use_kalman=True``) handles predictive matching.
-        """
-        sharpened = _sharpen_frame(frame)
-        detections: List[Detection] = []
-        gray = cv2.cvtColor(sharpened, cv2.COLOR_BGR2GRAY)
-
-        if self._april_detector is not None:
-            detections.extend(self._april_detector.detect(gray))
-        if self._qr_detector is not None:
-            detections.extend(self._qr_detector.detect(sharpened))
-        if self._laser_detector is not None:
-            detections.extend(self._laser_detector.detect(sharpened))
-
-        self._tracker.update(detections)
         return detections
 
     # ------------------------------------------------------------------
