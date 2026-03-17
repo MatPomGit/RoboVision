@@ -57,6 +57,7 @@ __all__ = [
     "MarkerPose3D",
     "RobotPose3D",
     "RoboEyeDetector",
+    "SlamCalibrator",
     "Detection",
     "DetectionMode",
     "DetectionType",

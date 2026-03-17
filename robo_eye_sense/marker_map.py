@@ -10,7 +10,7 @@ Workflow
 --------
 1. Create a :class:`SlamCalibrator` with the known physical marker size
    and (optionally) the camera intrinsic matrix.
-2. Feed frames through :meth:`SlamCalibrator.process_frame` — this runs
+2. Feed frames through :meth:`SlamCalibrator.process_detections` — this runs
    AprilTag detection, estimates the pose of every visible marker with
    ``cv2.solvePnP``, and fuses observations into the growing map.
 3. After enough observations, call :meth:`SlamCalibrator.marker_map` to

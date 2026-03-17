@@ -195,7 +195,7 @@ class TestMarkerMapMerge:
         m = mm.get("1")
         assert m is not None
         assert m.observations == 2
-        # Running average: (10*1 + 20)/2=15, (20*1 + 40)/2=30, (30*1 + 60)/2=45
+        # Running average: (10 * 1 + 20) / (1 + 1) = 15, (20 * 1 + 40) / (1 + 1) = 30, (30 * 1 + 60) / (1 + 1) = 45
         assert m.position == pytest.approx((15.0, 30.0, 45.0))
 
     def test_merge_three_observations(self):
