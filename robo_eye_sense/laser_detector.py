@@ -60,6 +60,16 @@ class LaserSpotDetector:
         target_area: int = 100,
         sensitivity: int = 50,
     ) -> None:
+        if not (0 <= brightness_threshold <= 255):
+            raise ValueError(
+                f"brightness_threshold must be in [0, 255], got {brightness_threshold}"
+            )
+        if min_area < 0:
+            raise ValueError(f"min_area must be >= 0, got {min_area}")
+        if max_area <= min_area:
+            raise ValueError(
+                f"max_area ({max_area}) must be greater than min_area ({min_area})"
+            )
         self.brightness_threshold = brightness_threshold
         self.min_area = min_area
         self.max_area = max_area
@@ -68,6 +78,39 @@ class LaserSpotDetector:
         self.sensitivity = max(0, min(100, sensitivity))
         # Set after each detect() call; used by the GUI threshold overlay.
         self.last_threshold_mask: Optional[np.ndarray] = None
+
+    def _compute_effective_area_bounds(self) -> tuple[int, int]:
+        """Compute the effective min/max area window from sensitivity.
+
+        The *area_spread* factor grows from 0.1 (tight) at sensitivity=0
+        to 10.0 (wide) at sensitivity=100, producing the acceptance window
+        ``[target_area / (1 + spread), target_area * (1 + spread)]``
+        clamped to ``[min_area, max_area]``.
+        """
+        sens_norm = self.sensitivity / 100.0
+        area_spread = 0.1 + sens_norm * 9.9
+        effective_min = max(
+            self.min_area,
+            int(self.target_area / (1.0 + area_spread)),
+        )
+        effective_max = min(
+            self.max_area,
+            int(self.target_area * (1.0 + area_spread)),
+        )
+        return effective_min, effective_max
+
+    def _compute_effective_circularity(self) -> float:
+        """Compute the effective circularity threshold from sensitivity.
+
+        At sensitivity=0 the threshold is the stricter of 0.8 or
+        ``min_circularity``; at sensitivity=100 it relaxes to exactly
+        ``min_circularity``.
+        """
+        sens_norm = self.sensitivity / 100.0
+        high_circ_bound = max(self.min_circularity, 0.8)
+        return self.min_circularity + (
+            high_circ_bound - self.min_circularity
+        ) * (1.0 - sens_norm)
 
     def detect(self, frame: np.ndarray) -> List[Detection]:
         """Return laser-spot detections found in *frame*.
@@ -100,27 +143,8 @@ class LaserSpotDetector:
             thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
 
-        # Compute effective area bounds from target_area and sensitivity.
-        # area_spread grows from 0.1× (tight) to 10× (wide) as sensitivity
-        # increases from 0 to 100, giving the acceptable area window
-        # [target_area / (1 + spread), target_area * (1 + spread)].
-        sens_norm = self.sensitivity / 100.0
-        area_spread = 0.1 + sens_norm * 9.9
-        effective_min_area = max(
-            self.min_area,
-            int(self.target_area / (1.0 + area_spread)),
-        )
-        effective_max_area = min(
-            self.max_area,
-            int(self.target_area * (1.0 + area_spread)),
-        )
-
-        # Circularity requirement: strictest (0.8) at sensitivity=0,
-        # relaxing to min_circularity at sensitivity=100.
-        high_circ_bound = max(self.min_circularity, 0.8)
-        effective_min_circularity = self.min_circularity + (
-            high_circ_bound - self.min_circularity
-        ) * (1.0 - sens_norm)
+        effective_min_area, effective_max_area = self._compute_effective_area_bounds()
+        effective_min_circularity = self._compute_effective_circularity()
 
         detections: List[Detection] = []
         for cnt in contours:

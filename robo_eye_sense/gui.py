@@ -111,30 +111,19 @@ class RoboEyeSenseApp:
         self._canvas_image_id: Optional[int] = None
 
         # Detection-mode flags (mirror the detector's live state)
-        self._enable_april = tk.BooleanVar(value=detector._april_detector is not None)
-        self._enable_qr = tk.BooleanVar(value=detector._qr_detector is not None)
-        self._enable_laser = tk.BooleanVar(value=detector._laser_detector is not None)
+        self._enable_april = tk.BooleanVar(value=detector.april_enabled)
+        self._enable_qr = tk.BooleanVar(value=detector.qr_enabled)
+        self._enable_laser = tk.BooleanVar(value=detector.laser_enabled)
 
         # Program mode
         initial_mode_label = _MODE_DISPLAY_INV.get(detector.mode, "Normal")
         self._mode_var = tk.StringVar(value=initial_mode_label)
 
         # Tunable parameters
-        _init_threshold = (
-            detector._laser_detector.brightness_threshold
-            if detector._laser_detector is not None
-            else 240
-        )
-        _init_target_area = (
-            detector._laser_detector.target_area
-            if detector._laser_detector is not None
-            else 100
-        )
-        _init_sensitivity = (
-            detector._laser_detector.sensitivity
-            if detector._laser_detector is not None
-            else 50
-        )
+        _laser = detector.laser_detector
+        _init_threshold = _laser.brightness_threshold if _laser is not None else 240
+        _init_target_area = _laser.target_area if _laser is not None else 100
+        _init_sensitivity = _laser.sensitivity if _laser is not None else 50
         self._laser_threshold = tk.IntVar(value=_init_threshold)
         self._laser_target_area = tk.IntVar(value=_init_target_area)
         self._laser_sensitivity = tk.IntVar(value=_init_sensitivity)
@@ -389,62 +378,54 @@ class RoboEyeSenseApp:
 
     def _on_toggle_april(self) -> None:
         """Enable or disable the AprilTag detector."""
-        from .april_tag_detector import AprilTagDetector, _apriltags_available
-
         if self._enable_april.get():
-            if self.detector._april_detector is None:
-                if _apriltags_available():
-                    self.detector._april_detector = AprilTagDetector()
-                else:
-                    # pupil-apriltags not installed; revert the checkbox
-                    self._enable_april.set(False)
+            if not self.detector.enable_april():
+                # pupil-apriltags not installed; revert the checkbox
+                self._enable_april.set(False)
         else:
-            self.detector._april_detector = None
+            self.detector.disable_april()
 
     def _on_toggle_qr(self) -> None:
         """Enable or disable the QR-code detector."""
-        from .qr_detector import QRCodeDetector
-
         if self._enable_qr.get():
-            if self.detector._qr_detector is None:
-                self.detector._qr_detector = QRCodeDetector()
+            self.detector.enable_qr()
         else:
-            self.detector._qr_detector = None
+            self.detector.disable_qr()
 
     def _on_toggle_laser(self) -> None:
         """Enable or disable the laser-spot detector."""
-        from .laser_detector import LaserSpotDetector
-
         if self._enable_laser.get():
-            if self.detector._laser_detector is None:
-                self.detector._laser_detector = LaserSpotDetector(
-                    brightness_threshold=self._laser_threshold.get(),
-                    target_area=self._laser_target_area.get(),
-                    sensitivity=self._laser_sensitivity.get(),
-                )
+            self.detector.enable_laser(
+                brightness_threshold=self._laser_threshold.get(),
+                target_area=self._laser_target_area.get(),
+                sensitivity=self._laser_sensitivity.get(),
+            )
         else:
-            self.detector._laser_detector = None
+            self.detector.disable_laser()
 
     def _on_threshold_change(self, _value: Optional[str] = None) -> None:
         """Apply the new laser-threshold value."""
         val = self._laser_threshold.get()
         self._threshold_label.config(text=str(val))
-        if self.detector._laser_detector is not None:
-            self.detector._laser_detector.brightness_threshold = val
+        laser = self.detector.laser_detector
+        if laser is not None:
+            laser.brightness_threshold = val
 
     def _on_target_area_change(self, _value: Optional[str] = None) -> None:
         """Apply the new laser target-area value."""
         val = self._laser_target_area.get()
         self._target_area_label.config(text=str(val))
-        if self.detector._laser_detector is not None:
-            self.detector._laser_detector.target_area = val
+        laser = self.detector.laser_detector
+        if laser is not None:
+            laser.target_area = val
 
     def _on_sensitivity_change(self, _value: Optional[str] = None) -> None:
         """Apply the new laser sensitivity value."""
         val = self._laser_sensitivity.get()
         self._sensitivity_label.config(text=str(val))
-        if self.detector._laser_detector is not None:
-            self.detector._laser_detector.sensitivity = val
+        laser = self.detector.laser_detector
+        if laser is not None:
+            laser.sensitivity = val
 
     # ──────────────────────────────────────────────────────────────────────
     # Frame update loop
@@ -479,17 +460,15 @@ class RoboEyeSenseApp:
         # Threshold overlay: highlight pixels above the laser brightness
         # threshold so users can see the effect of slider adjustments in
         # real time.
-        if (
-            self._show_threshold_overlay.get()
-            and self.detector._laser_detector is not None
-        ):
-            mask = self.detector._laser_detector.last_threshold_mask
+        laser = self.detector.laser_detector
+        if self._show_threshold_overlay.get() and laser is not None:
+            mask = laser.last_threshold_mask
             if mask is None:
                 # Fallback before the first detect() call
                 gray = cv2.cvtColor(vis, cv2.COLOR_BGR2GRAY)
                 _, mask = cv2.threshold(
                     gray,
-                    self.detector._laser_detector.brightness_threshold,
+                    laser.brightness_threshold,
                     255,
                     cv2.THRESH_BINARY,
                 )

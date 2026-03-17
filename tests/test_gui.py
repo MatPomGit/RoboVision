@@ -208,41 +208,41 @@ class TestRoboEyeSenseApp:
     def test_toggle_laser_off(self, app):
         app._enable_laser.set(False)
         app._on_toggle_laser()
-        assert app.detector._laser_detector is None
+        assert app.detector.laser_enabled is False
 
     def test_toggle_laser_on(self, app):
         app._enable_laser.set(False)
         app._on_toggle_laser()
         app._enable_laser.set(True)
         app._on_toggle_laser()
-        assert app.detector._laser_detector is not None
+        assert app.detector.laser_enabled is True
 
     def test_toggle_qr_off(self, app):
         app._enable_qr.set(False)
         app._on_toggle_qr()
-        assert app.detector._qr_detector is None
+        assert app.detector.qr_enabled is False
 
     def test_toggle_qr_on(self, app):
         app._enable_qr.set(False)
         app._on_toggle_qr()
         app._enable_qr.set(True)
         app._on_toggle_qr()
-        assert app.detector._qr_detector is not None
+        assert app.detector.qr_enabled is True
 
     def test_threshold_change_updates_detector(self, app):
         app._laser_threshold.set(200)
         app._on_threshold_change()
-        assert app.detector._laser_detector.brightness_threshold == 200
+        assert app.detector.laser_detector.brightness_threshold == 200
 
     def test_target_area_change_updates_detector(self, app):
         app._laser_target_area.set(300)
         app._on_target_area_change()
-        assert app.detector._laser_detector.target_area == 300
+        assert app.detector.laser_detector.target_area == 300
 
     def test_sensitivity_change_updates_detector(self, app):
         app._laser_sensitivity.set(75)
         app._on_sensitivity_change()
-        assert app.detector._laser_detector.sensitivity == 75
+        assert app.detector.laser_detector.sensitivity == 75
 
     def test_toggle_laser_off_and_on_preserves_params(self, app):
         """Re-enabling laser after disabling should use current slider values."""
@@ -252,8 +252,8 @@ class TestRoboEyeSenseApp:
         app._on_toggle_laser()
         app._enable_laser.set(True)
         app._on_toggle_laser()
-        assert app.detector._laser_detector.target_area == 250
-        assert app.detector._laser_detector.sensitivity == 30
+        assert app.detector.laser_detector.target_area == 250
+        assert app.detector.laser_detector.sensitivity == 30
 
     def test_on_close_sets_running_false(self, app):
         # Patch destroy so it doesn't actually destroy during test fixture
