@@ -168,8 +168,8 @@ class RoboEyeDetector:
     def __init__(
         self,
         enable_apriltag: bool = True,
-        enable_qr: bool = True,
-        enable_laser: bool = True,
+        enable_qr: bool = False,
+        enable_laser: bool = False,
         mode: DetectionMode = DetectionMode.NORMAL,
         laser_brightness_threshold: int = 240,
         laser_target_area: int = 100,

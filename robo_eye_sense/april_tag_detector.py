@@ -49,6 +49,12 @@ class AprilTagDetector:
     nthreads:
         Number of threads used internally by the detector.  Keep at ``1``
         on embedded platforms to avoid unpredictable CPU spikes.
+    min_decision_margin:
+        Minimum *decision_margin* reported by pupil-apriltags for a
+        detection to be accepted.  Low-margin detections are typically
+        caused by image noise or accidental patterns and should be
+        discarded to avoid phantom tracks.  The default of ``25.0`` is a
+        good starting point; increase for stricter filtering.
 
     Raises
     ------
@@ -59,6 +65,7 @@ class AprilTagDetector:
     def __init__(
         self,
         nthreads: int = 1,
+        min_decision_margin: float = 25.0,
     ) -> None:
         if not _apriltags_available():
             raise ImportError(
@@ -67,6 +74,7 @@ class AprilTagDetector:
             )
         import pupil_apriltags as apriltag  # type: ignore[import]
 
+        self._min_decision_margin = float(min_decision_margin)
         self._detector = apriltag.Detector(
             families=_ALL_FAMILIES,
             nthreads=nthreads,
@@ -95,6 +103,9 @@ class AprilTagDetector:
         results = self._detector.detect(gray_frame)
         detections: List[Detection] = []
         for r in results:
+            margin = getattr(r, "decision_margin", 0.0)
+            if margin < self._min_decision_margin:
+                continue
             center = (int(round(r.center[0])), int(round(r.center[1])))
             corners = [
                 (int(round(c[0])), int(round(c[1]))) for c in r.corners
@@ -105,6 +116,7 @@ class AprilTagDetector:
                     identifier=str(r.tag_id),
                     center=center,
                     corners=corners,
+                    confidence=float(margin),
                 )
             )
         return detections

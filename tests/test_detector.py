@@ -30,8 +30,8 @@ class TestRoboEyeDetectorInit:
         ):
             detector = RoboEyeDetector()
         assert detector._april_detector is None
-        assert detector._qr_detector is not None
-        assert detector._laser_detector is not None
+        assert detector._qr_detector is None
+        assert detector._laser_detector is None
 
     def test_laser_disabled(self):
         with patch(
@@ -83,7 +83,7 @@ class TestRoboEyeDetectorProcessFrame:
             "robo_eye_sense.april_tag_detector._apriltags_available",
             return_value=False,
         ):
-            detector = RoboEyeDetector(enable_qr=False)
+            detector = RoboEyeDetector(enable_qr=False, enable_laser=True)
         detections = detector.process_frame(frame)
         laser = [d for d in detections if d.detection_type == DetectionType.LASER_SPOT]
         assert len(laser) == 1
@@ -108,7 +108,7 @@ class TestRoboEyeDetectorProcessFrame:
             "robo_eye_sense.april_tag_detector._apriltags_available",
             return_value=False,
         ):
-            detector = RoboEyeDetector(enable_qr=False)
+            detector = RoboEyeDetector(enable_qr=False, enable_laser=True)
 
         frame = np.zeros((200, 200, 3), dtype=np.uint8)
         cv2.circle(frame, (100, 100), 6, (255, 255, 255), -1)
@@ -138,7 +138,7 @@ class TestRoboEyeDetectorDraw:
             "robo_eye_sense.april_tag_detector._apriltags_available",
             return_value=False,
         ):
-            detector = RoboEyeDetector(enable_qr=False)
+            detector = RoboEyeDetector(enable_qr=False, enable_laser=True)
         detections = detector.process_frame(frame)
         annotated = detector.draw_detections(frame.copy(), detections)
         assert annotated is not None
@@ -177,7 +177,7 @@ class TestFastMode:
             "robo_eye_sense.april_tag_detector._apriltags_available",
             return_value=False,
         ):
-            return RoboEyeDetector(mode=DetectionMode.FAST, enable_qr=False, **kwargs)
+            return RoboEyeDetector(mode=DetectionMode.FAST, enable_qr=False, enable_laser=True, **kwargs)
 
     def test_mode_property(self):
         d = self._make_detector()
@@ -266,7 +266,7 @@ class TestRobustMode:
             "robo_eye_sense.april_tag_detector._apriltags_available",
             return_value=False,
         ):
-            return RoboEyeDetector(mode=DetectionMode.ROBUST, enable_qr=False, **kwargs)
+            return RoboEyeDetector(mode=DetectionMode.ROBUST, enable_qr=False, enable_laser=True, **kwargs)
 
     def test_mode_property(self):
         d = self._make_detector()

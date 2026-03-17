@@ -72,10 +72,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--no-apriltag", action="store_true", help="Disable AprilTag detection."
     )
     parser.add_argument(
-        "--no-qr", action="store_true", help="Disable QR-code detection."
+        "--qr", action="store_true", help="Enable QR-code detection (disabled by default)."
     )
     parser.add_argument(
-        "--no-laser", action="store_true", help="Disable laser-spot detection."
+        "--laser", action="store_true", help="Enable laser-spot detection (disabled by default)."
     )
     parser.add_argument(
         "--laser-threshold",
@@ -126,8 +126,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
 
     detector = RoboEyeDetector(
         enable_apriltag=not args.no_apriltag,
-        enable_qr=not args.no_qr,
-        enable_laser=not args.no_laser,
+        enable_qr=args.qr,
+        enable_laser=args.laser,
         mode=mode,
         laser_brightness_threshold=args.laser_threshold,
     )
