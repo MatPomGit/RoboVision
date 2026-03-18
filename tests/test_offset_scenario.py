@@ -262,27 +262,27 @@ class TestCameraOffsetScenario:
 
 
 # ---------------------------------------------------------------------------
-# CLI --scenario offset
+# CLI --mode offset
 # ---------------------------------------------------------------------------
 
 
 class TestCLIScenarioOffset:
-    """Verify the --scenario offset argument is accepted by the CLI parser."""
+    """Verify the --mode offset argument is accepted by the CLI parser."""
 
     def test_parse_scenario_offset(self):
         from main import _parse_args
 
-        args = _parse_args(["--scenario", "offset", "--source", "0"])
-        assert args.scenario == "offset"
+        args = _parse_args(["--mode", "offset", "--source", "0"])
+        assert args.mode == "offset"
 
     def test_parse_no_scenario(self):
         from main import _parse_args
 
         args = _parse_args(["--source", "0"])
-        assert args.scenario is None
+        assert args.mode == "basic"
 
     def test_scenario_offset_runs_with_mock_camera(self, capsys, tmp_path):
-        """Full integration: --scenario offset with a tiny synthetic video."""
+        """Full integration: --mode offset with a tiny synthetic video."""
         cv2 = pytest.importorskip("cv2")
 
         # Create a tiny 2-frame video (black frames – no real AprilTags)
@@ -303,7 +303,7 @@ class TestCLIScenarioOffset:
         ):
             from main import main
 
-            rc = main(["--scenario", "offset", "--source", str(video_path)])
+            rc = main(["--mode", "offset", "--source", str(video_path)])
 
         assert rc == 0
         captured = capsys.readouterr()

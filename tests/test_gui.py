@@ -297,57 +297,57 @@ class TestRoboEyeSenseApp:
         from robo_eye_sense.results import DetectionMode
         assert app.detector.mode == DetectionMode.NORMAL
 
-    def test_mode_change_to_fast(self, app):
+    def test_quality_change_to_low(self, app):
         from robo_eye_sense.results import DetectionMode
-        app._mode_var.set("Fast (low-power)")
-        app._on_mode_change()
+        app._quality_var.set("Low")
+        app._on_quality_change()
         assert app.detector.mode == DetectionMode.FAST
 
-    def test_mode_change_to_robust(self, app):
+    def test_quality_change_to_high(self, app):
         from robo_eye_sense.results import DetectionMode
-        app._mode_var.set("Robust (motion-blur resistant)")
-        app._on_mode_change()
+        app._quality_var.set("High")
+        app._on_quality_change()
         assert app.detector.mode == DetectionMode.ROBUST
         assert app.detector._tracker.use_kalman is True
 
-    def test_mode_change_back_to_normal(self, app):
+    def test_quality_change_back_to_normal(self, app):
         from robo_eye_sense.results import DetectionMode
-        app._mode_var.set("Robust (motion-blur resistant)")
-        app._on_mode_change()
-        app._mode_var.set("Normal")
-        app._on_mode_change()
+        app._quality_var.set("High")
+        app._on_quality_change()
+        app._quality_var.set("Normal")
+        app._on_quality_change()
         assert app.detector.mode == DetectionMode.NORMAL
         assert app.detector._tracker.use_kalman is False
 
-    def test_mode_description_updates_on_change(self, app):
-        """Switching mode should update the description label."""
-        app._mode_var.set("Fast (low-power)")
-        app._on_mode_change()
-        assert "downscaled" in app._mode_desc_var.get().lower()
+    def test_quality_description_updates_on_change(self, app):
+        """Switching quality should update the description label."""
+        app._quality_var.set("Low")
+        app._on_quality_change()
+        assert "downscaled" in app._quality_desc_var.get().lower()
 
-        app._mode_var.set("Robust (motion-blur resistant)")
-        app._on_mode_change()
-        assert "kalman" in app._mode_desc_var.get().lower()
+        app._quality_var.set("High")
+        app._on_quality_change()
+        assert "kalman" in app._quality_desc_var.get().lower()
 
-    def test_info_panel_mode_updates_on_change(self, app):
-        """The info-panel mode indicator should reflect the active mode."""
-        assert app._info_mode_var.get() == "Normal"
-        app._mode_var.set("Fast (low-power)")
-        app._on_mode_change()
-        assert app._info_mode_var.get() == "Fast (low-power)"
+    def test_info_panel_quality_updates_on_change(self, app):
+        """The info-panel quality indicator should reflect the active quality."""
+        assert app._info_quality_var.get() == "Normal"
+        app._quality_var.set("Low")
+        app._on_quality_change()
+        assert app._info_quality_var.get() == "Low"
 
-    def test_set_mode_helper(self, app):
-        """_set_mode() should update combobox, detector, and UI labels."""
+    def test_set_quality_helper(self, app):
+        """_set_quality() should update combobox, detector, and UI labels."""
         from robo_eye_sense.results import DetectionMode
 
-        app._set_mode(DetectionMode.ROBUST)
+        app._set_quality(DetectionMode.ROBUST)
         assert app.detector.mode == DetectionMode.ROBUST
-        assert app._mode_var.get() == "Robust (motion-blur resistant)"
-        assert "kalman" in app._mode_desc_var.get().lower()
-        assert app._info_mode_var.get() == "Robust (motion-blur resistant)"
+        assert app._quality_var.get() == "High"
+        assert "kalman" in app._quality_desc_var.get().lower()
+        assert app._info_quality_var.get() == "High"
 
-    def test_keyboard_shortcut_switches_mode(self, app):
-        """Ctrl+1/2/3 key bindings should switch detector mode."""
+    def test_keyboard_shortcut_switches_quality(self, app):
+        """Ctrl+1/2/3 key bindings should switch detector quality."""
         from robo_eye_sense.results import DetectionMode
 
         # event_generate requires a visible, focused window
@@ -356,7 +356,7 @@ class TestRoboEyeSenseApp:
         app.root.focus_force()
         app.root.update()
 
-        app.root.event_generate("<Control-Key-2>", when="tail")
+        app.root.event_generate("<Control-Key-1>", when="tail")
         app.root.update()
         assert app.detector.mode == DetectionMode.FAST
 
@@ -364,34 +364,36 @@ class TestRoboEyeSenseApp:
         app.root.update()
         assert app.detector.mode == DetectionMode.ROBUST
 
-        app.root.event_generate("<Control-Key-1>", when="tail")
+        app.root.event_generate("<Control-Key-2>", when="tail")
         app.root.update()
         assert app.detector.mode == DetectionMode.NORMAL
 
         app.root.withdraw()
 
 
-    # ── Scenario callbacks ────────────────────────────────────────────────
+    # ── Scenario mode callbacks ───────────────────────────────────────────
 
     def test_scenario_initially_inactive(self, app):
         assert app._scenario_active is False
         assert app._scenario is None
 
-    def test_scenario_start_activates(self, app):
-        app._on_scenario_start()
+    def test_scenario_mode_offset_activates(self, app):
+        app._scenario_mode_var.set("Offset")
+        app._on_scenario_mode_change()
         assert app._scenario_active is True
         assert app._scenario is not None
-        assert "Stop" in app._scenario_start_btn.cget("text")
 
-    def test_scenario_stop_deactivates(self, app):
-        app._on_scenario_start()
-        app._on_scenario_start()  # toggle off
+    def test_scenario_mode_basic_deactivates(self, app):
+        app._scenario_mode_var.set("Offset")
+        app._on_scenario_mode_change()
+        app._scenario_mode_var.set("Basic")
+        app._on_scenario_mode_change()
         assert app._scenario_active is False
         assert app._scenario is None
-        assert "Start" in app._scenario_start_btn.cget("text")
 
     def test_scenario_capture_stores_reference(self, app):
-        app._on_scenario_start()
+        app._scenario_mode_var.set("Offset")
+        app._on_scenario_mode_change()
         # Simulate some detections being available
         from robo_eye_sense.results import Detection, DetectionType
         app._last_detections = [
@@ -407,7 +409,8 @@ class TestRoboEyeSenseApp:
         assert str(app._scenario_reset_btn.cget("state")) != "disabled"
 
     def test_scenario_reset_clears_reference(self, app):
-        app._on_scenario_start()
+        app._scenario_mode_var.set("Offset")
+        app._on_scenario_mode_change()
         app._last_detections = []
         app._on_scenario_capture_reference()
         app._on_scenario_reset()
@@ -465,27 +468,30 @@ class TestRoboEyeSenseApp:
         assert app._slam_active is False
         assert app._slam_calibrator is None
 
-    def test_slam_start_activates(self, app):
-        app._on_slam_start()
+    def test_slam_mode_activates(self, app):
+        app._scenario_mode_var.set("SLAM")
+        app._on_scenario_mode_change()
         assert app._slam_active is True
         assert app._slam_calibrator is not None
-        assert "Stop" in app._slam_start_btn.cget("text")
 
-    def test_slam_stop_deactivates(self, app):
-        app._on_slam_start()
-        app._on_slam_start()  # toggle off
+    def test_slam_basic_mode_deactivates(self, app):
+        app._scenario_mode_var.set("SLAM")
+        app._on_scenario_mode_change()
+        app._scenario_mode_var.set("Basic")
+        app._on_scenario_mode_change()
         assert app._slam_active is False
         assert app._slam_calibrator is None
-        assert "Start" in app._slam_start_btn.cget("text")
 
     def test_slam_reset_clears_map(self, app):
-        app._on_slam_start()
+        app._scenario_mode_var.set("SLAM")
+        app._on_scenario_mode_change()
         assert app._slam_calibrator is not None
         app._on_slam_reset()
         assert len(app._slam_calibrator.marker_map) == 0
 
     def test_slam_save_button_enabled_when_active(self, app):
-        app._on_slam_start()
+        app._scenario_mode_var.set("SLAM")
+        app._on_scenario_mode_change()
         assert str(app._slam_save_btn.cget("state")) != "disabled"
 
     def test_slam_save_button_disabled_when_inactive(self, app):
@@ -494,12 +500,13 @@ class TestRoboEyeSenseApp:
     def test_scenario_notebook_exists(self, app):
         """The info panel should contain a tabbed notebook."""
         assert hasattr(app, "_scenario_notebook")
-        # There should be 3 tabs: Offset, SLAM, and Auto
+        # There are 3 tabs: Offset, SLAM, and Auto
         assert app._scenario_notebook.index("end") == 3
 
-    def test_slam_start_switches_to_slam_tab(self, app):
-        """Starting SLAM should switch the notebook to the SLAM tab."""
-        app._on_slam_start()
+    def test_slam_mode_switches_to_slam_tab(self, app):
+        """Setting SLAM mode should switch the notebook to the SLAM tab."""
+        app._scenario_mode_var.set("SLAM")
+        app._on_scenario_mode_change()
         assert app._scenario_notebook.index("current") == 1
 
     # ── Window title ──────────────────────────────────────────────────────
@@ -527,30 +534,23 @@ class TestRoboEyeSenseApp:
         app._toggle_layout()
         assert app._layout_btn_var.get() == "Compact view"
 
-    # ── Scenario buttons in tabs ──────────────────────────────────────────
+    # ── Mode dropdown in left panel ───────────────────────────────────────
 
-    def test_offset_tab_has_start_button(self, app):
-        """Offset scenario start button should exist (now inside the tab)."""
-        assert hasattr(app, "_scenario_start_btn")
-
-    def test_slam_tab_has_start_button(self, app):
-        """SLAM start button should exist (inside SLAM tab)."""
-        assert hasattr(app, "_slam_start_btn")
-
-    def test_auto_tab_has_start_button(self, app):
-        """Auto start button should exist (inside Auto tab)."""
-        assert hasattr(app, "_auto_start_btn")
+    def test_mode_dropdown_exists(self, app):
+        """Mode combobox (scenario selector) should exist in the left panel."""
+        assert hasattr(app, "_scenario_mode_var")
+        assert app._scenario_mode_var.get() == "Basic"
 
     def test_auto_tab_has_marker_entry(self, app):
         """Auto tab should have a Follow ID entry field."""
         assert hasattr(app, "_auto_marker_entry")
 
-    # ── Merged INFO/CAMERA/MODE panel ────────────────────────────────────
+    # ── Merged INFO/CAMERA/QUALITY panel ─────────────────────────────────
 
-    def test_info_panel_has_combined_fps_and_mode(self, app):
-        """FPS and mode info should both be accessible in the merged panel."""
+    def test_info_panel_has_combined_fps_and_quality(self, app):
+        """FPS and quality info should both be accessible in the merged panel."""
         assert hasattr(app, "_cam_fps_var")
-        assert hasattr(app, "_info_mode_var")
+        assert hasattr(app, "_info_quality_var")
         assert hasattr(app, "_cam_res_var")
 
 
