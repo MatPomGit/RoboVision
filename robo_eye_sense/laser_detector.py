@@ -197,8 +197,8 @@ class LaserSpotDetector:
         if self.brightness_threshold_max < 255:
             thresh = cv2.inRange(
                 gray,
-                np.array(self.brightness_threshold, dtype=np.uint8),
-                np.array(self.brightness_threshold_max, dtype=np.uint8),
+                self.brightness_threshold,
+                self.brightness_threshold_max,
             )
         else:
             _, thresh = cv2.threshold(

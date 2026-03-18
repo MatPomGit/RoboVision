@@ -408,7 +408,7 @@ class RoboEyeSenseApp:
         ttk.Label(parent, text="Parameters").pack(anchor="w")
 
         # Laser threshold
-        ttk.Label(parent, text="Laser threshold (0–255)").pack(
+        ttk.Label(parent, text="Laser threshold min (0–255)").pack(
             anchor="w", pady=(6, 0)
         )
         self._threshold_label = ttk.Label(
@@ -686,11 +686,13 @@ class RoboEyeSenseApp:
         slam_tab = ttk.Frame(self._scenario_notebook, padding=4)
         self._scenario_notebook.add(slam_tab, text="SLAM")
         self._build_slam_tab(slam_tab)
+        self._slam_tab = slam_tab
 
         # ── Auto tab ─────────────────────────────────────────────────────
         auto_tab = ttk.Frame(self._scenario_notebook, padding=4)
         self._scenario_notebook.add(auto_tab, text="Auto")
         self._build_auto_tab(auto_tab)
+        self._auto_tab = auto_tab
 
     # ──────────────────────────────────────────────────────────────────────
     # Control callbacks
@@ -991,7 +993,7 @@ class RoboEyeSenseApp:
             self._slam_save_btn.config(state="normal")
             self._slam_robot_var.set("SLAM started.\nWaiting for markers…")
             # Switch to SLAM tab
-            self._scenario_notebook.select(1)
+            self._scenario_notebook.select(self._slam_tab)
 
     def _on_slam_reset(self) -> None:
         """Reset the SLAM calibrator (clear the marker map)."""
@@ -1045,7 +1047,7 @@ class RoboEyeSenseApp:
             self._auto_start_btn.config(text="Stop auto")
             self._auto_info_var.set("Auto-follow started.\nWaiting for markers…")
             # Switch to Auto tab
-            self._scenario_notebook.select(2)
+            self._scenario_notebook.select(self._auto_tab)
 
     def _on_auto_marker_id_change(self, _event: Optional[object] = None) -> None:
         """Update the target marker ID for auto-follow."""
