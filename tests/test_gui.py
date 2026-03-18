@@ -462,45 +462,37 @@ class TestRoboEyeSenseApp:
         app._on_close()
         assert app._recorder is None
 
-    def test_recording_auto_saves_to_video_folder(self, app, tmp_path, monkeypatch):
-        """Without an initial_record_path, recording saves to 'video' folder."""
-        from pathlib import Path
-        # Redirect the video dir to a temp path so we don't write to the repo
-        fake_video_dir = tmp_path / "video"
-        monkeypatch.setattr(
-            "robo_eye_sense.gui.Path",
-            lambda *args: fake_video_dir if args == (__file__,) else Path(*args),
-        )
-        # Patch Path directly in the module
+    def test_recording_auto_saves_to_video_folder(self, app, tmp_path):
+        """Without an initial_record_path, recording auto-generates a path in 'video' folder."""
         import robo_eye_sense.gui as gui_mod
-        original_path = gui_mod.Path
+        from pathlib import Path
 
-        class FakePath:
-            def __init__(self, *args):
-                self._path = Path(*args)
-            def resolve(self):
-                return self
-            @property
-            def parent(self):
-                p = FakePath.__new__(FakePath)
-                p._path = self._path.parent
-                return p
-            def __truediv__(self, other):
-                p = FakePath.__new__(FakePath)
-                p._path = self._path / other
-                return p
-            def mkdir(self, **kwargs):
-                self._path.mkdir(**kwargs)
-            def __str__(self):
-                return str(self._path)
-            def __fspath__(self):
-                return str(self._path)
+        # Capture the path passed to VideoRecorder
+        captured_paths: list[str] = []
+        original_recorder = gui_mod.VideoRecorder
 
-        # Simpler approach: just use _record_path to avoid the auto-path logic
-        path = str(tmp_path / "auto_test.mp4")
-        app._record_path = path
-        app._start_recording()
+        class TrackingRecorder(original_recorder):
+            def __init__(self, path, **kwargs):
+                captured_paths.append(path)
+                super().__init__(path, **kwargs)
+
+        # Redirect the video folder to tmp_path so no files are written to the repo
+        original_gui_path = gui_mod.Path
+        gui_mod.VideoRecorder = TrackingRecorder
+        gui_mod.Path = lambda p: original_gui_path(tmp_path / "fake_gui.py") if str(p).endswith("gui.py") else original_gui_path(p)
+
+        app._record_path = None
+        try:
+            app._start_recording()
+        finally:
+            gui_mod.VideoRecorder = original_recorder
+            gui_mod.Path = original_gui_path
+
         assert app._recorder is not None
+        assert len(captured_paths) == 1
+        assert "video" in captured_paths[0]
+        assert "recording_" in captured_paths[0]
+        assert captured_paths[0].endswith(".mp4")
         app._stop_recording()
 
     # ── SLAM callbacks ────────────────────────────────────────────────────
