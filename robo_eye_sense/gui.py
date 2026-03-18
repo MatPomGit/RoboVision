@@ -5,10 +5,10 @@ Layout
 +-------------+---------------------------+-----------+
 |  CONTROLS   |       VIDEO FEED          |   INFO    |
 |  ---------- |  (annotated frame)        | --------- |
-|  Mode       |                           | Camera    |
+|  Quality    |                           | Camera    |
 |  [combo]    |                           | FPS / W×H |
 |  ---------- |                           | --------- |
-|  Detectors  |                           | Mode      |
+|  Detectors  |                           | Quality   |
 |  [x] April  |                           | --------- |
 |  [x] QR     |                           | Objects   |
 |  [x] Laser  |                           | (list)    |
@@ -19,17 +19,17 @@ Layout
 |  Sensitivity|                           |  (tabs)   |
 |  [ ] Overlay|                           |           |
 |  ---------- |                           |           |
-|  Scenario   |                           |           |
-|  [Start]    |                           |           |
+|  Mode       |                           |           |
+|  [combo]    |                           |           |
 |  [Capture ] |                           |           |
 |  [Reset   ] |                           |           |
 |  ---------- |                           |           |
 |  [  Quit  ] |                           |           |
 +-------------+---------------------------+-----------+
-|  Status bar (FPS | Mode | Detections)               |
+|  Status bar (FPS | Quality | Detections)             |
 +------------------------------------------------------|
 
-Keyboard shortcuts: Ctrl+1 → Normal, Ctrl+2 → Fast, Ctrl+3 → Robust.
+Keyboard shortcuts: Ctrl+1 → Low, Ctrl+2 → Normal, Ctrl+3 → High.
 
 Usage::
 
@@ -47,9 +47,11 @@ Usage::
 
 from __future__ import annotations
 
+import datetime
 import math
 import time
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk
 from typing import List, Optional
 
@@ -78,20 +80,23 @@ _VIS3D_GRID_COLOR = "#334455"
 _VIS3D_MARKER_COLOR = "#00cc66"
 _VIS3D_CAMERA_COLOR = "#ff4444"
 
-# Human-readable labels shown in the mode combobox
-_MODE_DISPLAY: dict[str, DetectionMode] = {
+# Human-readable labels shown in the quality combobox
+_QUALITY_DISPLAY: dict[str, DetectionMode] = {
+    "Low": DetectionMode.FAST,
     "Normal": DetectionMode.NORMAL,
-    "Fast (low-power)": DetectionMode.FAST,
-    "Robust (motion-blur resistant)": DetectionMode.ROBUST,
+    "High": DetectionMode.ROBUST,
 }
-_MODE_DISPLAY_INV: dict[DetectionMode, str] = {v: k for k, v in _MODE_DISPLAY.items()}
+_QUALITY_DISPLAY_INV: dict[DetectionMode, str] = {v: k for k, v in _QUALITY_DISPLAY.items()}
 
-# Short descriptions displayed below the combobox when a mode is active
-_MODE_DESCRIPTIONS: dict[DetectionMode, str] = {
+# Short descriptions displayed below the combobox when a quality level is active
+_QUALITY_DESCRIPTIONS: dict[DetectionMode, str] = {
     DetectionMode.NORMAL: "Balanced – default detection pipeline.",
     DetectionMode.FAST: "Speed-optimised – frame downscaled 50 %.",
     DetectionMode.ROBUST: "Tracking-optimised – sharpening + Kalman.",
 }
+
+# Available scenario modes for the mode combobox
+_SCENARIO_MODES: list[str] = ["Basic", "Offset", "SLAM", "Auto"]
 
 
 def render_3d_scene(
@@ -246,9 +251,12 @@ class RoboEyeSenseApp:
         self._enable_qr = tk.BooleanVar(value=detector.qr_enabled)
         self._enable_laser = tk.BooleanVar(value=detector.laser_enabled)
 
-        # Program mode
-        initial_mode_label = _MODE_DISPLAY_INV.get(detector.mode, "Normal")
-        self._mode_var = tk.StringVar(value=initial_mode_label)
+        # Quality (detection mode)
+        initial_quality_label = _QUALITY_DISPLAY_INV.get(detector.mode, "Normal")
+        self._quality_var = tk.StringVar(value=initial_quality_label)
+
+        # Scenario mode
+        self._scenario_mode_var = tk.StringVar(value="Basic")
 
         # Tunable parameters
         _laser = detector.laser_detector
@@ -291,10 +299,10 @@ class RoboEyeSenseApp:
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        # Keyboard shortcuts for quick mode switching
-        self.root.bind("<Control-Key-1>", lambda _e: self._set_mode(DetectionMode.NORMAL))
-        self.root.bind("<Control-Key-2>", lambda _e: self._set_mode(DetectionMode.FAST))
-        self.root.bind("<Control-Key-3>", lambda _e: self._set_mode(DetectionMode.ROBUST))
+        # Keyboard shortcuts for quick quality switching
+        self.root.bind("<Control-Key-1>", lambda _e: self._set_quality(DetectionMode.FAST))
+        self.root.bind("<Control-Key-2>", lambda _e: self._set_quality(DetectionMode.NORMAL))
+        self.root.bind("<Control-Key-3>", lambda _e: self._set_quality(DetectionMode.ROBUST))
 
     # ──────────────────────────────────────────────────────────────────────
     # UI construction
@@ -344,30 +352,30 @@ class RoboEyeSenseApp:
             anchor="w", pady=(0, 6)
         )
 
-        # ── Program mode ──────────────────────────────────────────────────
+        # ── Quality (detection mode) ──────────────────────────────────────
         ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=4)
-        ttk.Label(parent, text="Program mode").pack(anchor="w")
+        ttk.Label(parent, text="Quality").pack(anchor="w")
 
-        mode_combo = ttk.Combobox(
+        quality_combo = ttk.Combobox(
             parent,
-            textvariable=self._mode_var,
-            values=list(_MODE_DISPLAY.keys()),
+            textvariable=self._quality_var,
+            values=list(_QUALITY_DISPLAY.keys()),
             state="readonly",
             width=28,
         )
-        mode_combo.pack(anchor="w", pady=(2, 0))
-        mode_combo.bind("<<ComboboxSelected>>", self._on_mode_change)
+        quality_combo.pack(anchor="w", pady=(2, 0))
+        quality_combo.bind("<<ComboboxSelected>>", self._on_quality_change)
 
-        # Description of the currently selected mode
-        initial_desc = _MODE_DESCRIPTIONS.get(self.detector.mode, "")
-        self._mode_desc_var = tk.StringVar(value=initial_desc)
-        self._mode_desc_label = ttk.Label(
+        # Description of the currently selected quality level
+        initial_desc = _QUALITY_DESCRIPTIONS.get(self.detector.mode, "")
+        self._quality_desc_var = tk.StringVar(value=initial_desc)
+        self._quality_desc_label = ttk.Label(
             parent,
-            textvariable=self._mode_desc_var,
+            textvariable=self._quality_desc_var,
             wraplength=180,
             font=("", 8, "italic"),
         )
-        self._mode_desc_label.pack(anchor="w", pady=(2, 0))
+        self._quality_desc_label.pack(anchor="w", pady=(2, 0))
 
         # Keyboard shortcut hint
         ttk.Label(
@@ -501,17 +509,21 @@ class RoboEyeSenseApp:
             variable=self._show_threshold_overlay,
         ).pack(anchor="w", pady=(8, 0))
 
-        # ── Scenario ─────────────────────────────────────────────────────
+        # ── Mode (scenario selection) ─────────────────────────────────────
         ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=8)
-        ttk.Label(parent, text="Offset Scenario", font=("", 9, "bold")).pack(anchor="w")
+        ttk.Label(parent, text="Mode", font=("", 9, "bold")).pack(anchor="w")
 
-        self._scenario_start_btn = ttk.Button(
+        mode_combo = ttk.Combobox(
             parent,
-            text="Start scenario",
-            command=self._on_scenario_start,
+            textvariable=self._scenario_mode_var,
+            values=_SCENARIO_MODES,
+            state="readonly",
+            width=28,
         )
-        self._scenario_start_btn.pack(fill="x", pady=(4, 2))
+        mode_combo.pack(anchor="w", pady=(2, 4))
+        mode_combo.bind("<<ComboboxSelected>>", self._on_scenario_mode_change)
 
+        # Offset-specific controls
         self._scenario_capture_btn = ttk.Button(
             parent,
             text="Capture reference",
@@ -528,17 +540,7 @@ class RoboEyeSenseApp:
         )
         self._scenario_reset_btn.pack(fill="x", pady=2)
 
-        # ── SLAM scenario ─────────────────────────────────────────────────
-        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=8)
-        ttk.Label(parent, text="SLAM Scenario", font=("", 9, "bold")).pack(anchor="w")
-
-        self._slam_start_btn = ttk.Button(
-            parent,
-            text="Start SLAM",
-            command=self._on_slam_start,
-        )
-        self._slam_start_btn.pack(fill="x", pady=(4, 2))
-
+        # SLAM-specific controls
         self._slam_reset_btn = ttk.Button(
             parent,
             text="Reset SLAM",
@@ -555,18 +557,7 @@ class RoboEyeSenseApp:
         )
         self._slam_save_btn.pack(fill="x", pady=2)
 
-        # ── Auto-follow scenario ──────────────────────────────────────────
-        ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=8)
-        ttk.Label(parent, text="Auto Follow", font=("", 9, "bold")).pack(anchor="w")
-
-        self._auto_start_btn = ttk.Button(
-            parent,
-            text="Start auto",
-            command=self._on_auto_start,
-        )
-        self._auto_start_btn.pack(fill="x", pady=(4, 2))
-
-        # Marker-ID selector
+        # Auto-follow: marker-ID entry
         _marker_frame = ttk.Frame(parent)
         _marker_frame.pack(fill="x", pady=2)
         ttk.Label(_marker_frame, text="Follow ID:").pack(side="left")
@@ -625,12 +616,12 @@ class RoboEyeSenseApp:
         ttk.Label(parent, textvariable=self._cam_fps_var).pack(anchor="w")
         ttk.Label(parent, textvariable=self._cam_res_var).pack(anchor="w")
 
-        # Current mode
+        # Current quality
         ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=4)
-        ttk.Label(parent, text="Mode", font=("", 9, "bold")).pack(anchor="w")
-        initial_label = _MODE_DISPLAY_INV.get(self.detector.mode, "Normal")
-        self._info_mode_var = tk.StringVar(value=initial_label)
-        ttk.Label(parent, textvariable=self._info_mode_var).pack(anchor="w")
+        ttk.Label(parent, text="Quality", font=("", 9, "bold")).pack(anchor="w")
+        initial_label = _QUALITY_DISPLAY_INV.get(self.detector.mode, "Normal")
+        self._info_quality_var = tk.StringVar(value=initial_label)
+        ttk.Label(parent, textvariable=self._info_quality_var).pack(anchor="w")
 
         # Detected objects list
         ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=8)
@@ -680,7 +671,7 @@ class RoboEyeSenseApp:
         scenario_scroll.config(command=self._scenario_text.yview)
         self._scenario_text.pack(side="left", fill="both", expand=True)
         scenario_scroll.pack(side="right", fill="y")
-        self._set_scenario_text("Scenario not started.\nClick 'Start scenario' to begin.")
+        self._set_scenario_text("Basic mode.\nNo scenario active.")
 
         # ── SLAM tab ─────────────────────────────────────────────────────
         slam_tab = ttk.Frame(self._scenario_notebook, padding=4)
@@ -693,6 +684,7 @@ class RoboEyeSenseApp:
         self._scenario_notebook.add(auto_tab, text="Auto")
         self._build_auto_tab(auto_tab)
         self._auto_tab = auto_tab
+        self._offset_tab = offset_tab
 
     # ──────────────────────────────────────────────────────────────────────
     # Control callbacks
@@ -785,20 +777,20 @@ class RoboEyeSenseApp:
         self._auto_markers_list.pack(side="left", fill="both", expand=True)
         auto_scroll.pack(side="right", fill="y")
 
-    def _set_mode(self, mode: DetectionMode) -> None:
-        """Programmatically switch to *mode* and update all UI elements."""
-        label = _MODE_DISPLAY_INV.get(mode, "Normal")
-        self._mode_var.set(label)
-        self._on_mode_change()
+    def _set_quality(self, mode: DetectionMode) -> None:
+        """Programmatically switch to quality *mode* and update all UI elements."""
+        label = _QUALITY_DISPLAY_INV.get(mode, "Normal")
+        self._quality_var.set(label)
+        self._on_quality_change()
 
-    def _on_mode_change(self, _event: Optional[object] = None) -> None:
-        """Switch the detector's operating mode."""
-        label = self._mode_var.get()
-        new_mode = _MODE_DISPLAY.get(label, DetectionMode.NORMAL)
+    def _on_quality_change(self, _event: Optional[object] = None) -> None:
+        """Switch the detector's quality (operating mode)."""
+        label = self._quality_var.get()
+        new_mode = _QUALITY_DISPLAY.get(label, DetectionMode.NORMAL)
         self.detector.mode = new_mode
         # Update the description label and info-panel indicator
-        self._mode_desc_var.set(_MODE_DESCRIPTIONS.get(new_mode, ""))
-        self._info_mode_var.set(label)
+        self._quality_desc_var.set(_QUALITY_DESCRIPTIONS.get(new_mode, ""))
+        self._info_quality_var.set(label)
 
     def _on_toggle_april(self) -> None:
         """Enable or disable the AprilTag detector."""
@@ -878,7 +870,7 @@ class RoboEyeSenseApp:
         if laser is not None:
             laser.sensitivity = val
 
-    # ── Scenario callbacks ────────────────────────────────────────────────
+    # ── Scenario mode callbacks ───────────────────────────────────────────
 
     def _set_scenario_text(self, text: str) -> None:
         """Replace the content of the scenario text widget."""
@@ -887,39 +879,92 @@ class RoboEyeSenseApp:
         self._scenario_text.insert("1.0", text)
         self._scenario_text.config(state="disabled")
 
-    def _on_scenario_start(self) -> None:
-        """Start or stop the offset-calibration scenario."""
+    def _on_scenario_mode_change(self, _event: Optional[object] = None) -> None:
+        """Switch to the selected scenario mode."""
+        new_mode = self._scenario_mode_var.get()
+        # Stop all currently active scenarios
+        self._stop_all_scenarios()
+        # Start the newly selected scenario
+        if new_mode == "Offset":
+            self._start_offset_scenario()
+        elif new_mode == "SLAM":
+            self._start_slam_scenario()
+        elif new_mode == "Auto":
+            self._start_auto_scenario()
+
+    def _stop_all_scenarios(self) -> None:
+        """Stop every active scenario and reset UI to the idle state."""
         if self._scenario_active:
-            # Stop the scenario
             self._scenario_active = False
             self._scenario = None
             self._last_offset_result = None
-            self._scenario_start_btn.config(text="Start scenario")
             self._scenario_capture_btn.config(state="disabled")
             self._scenario_reset_btn.config(state="disabled")
-            self._set_scenario_text(
-                "Scenario not started.\n"
-                "Click 'Start scenario' to begin."
+        if self._slam_active:
+            self._slam_active = False
+            self._slam_calibrator = None
+            self._last_robot_pose = RobotPose3D()
+            self._slam_reset_btn.config(state="disabled")
+            self._slam_save_btn.config(state="disabled")
+            self._slam_robot_var.set("Position: –\nOrientation: –")
+            self._slam_markers_list.delete(0, tk.END)
+        if self._auto_active:
+            self._auto_active = False
+            self._auto_scenario = None
+            self._last_auto_result = None
+            self._auto_info_var.set(
+                "Auto-follow not started.\n"
+                "Select 'Auto' mode to begin."
             )
-        else:
-            # Start the scenario
-            self._scenario = CameraOffsetScenario(
-                camera=self.camera,
-                detector=self.detector,
-                frame_width=self.camera.actual_width,
-            )
-            self._scenario_active = True
-            self._last_offset_result = None
-            self._scenario_start_btn.config(text="Stop scenario")
-            self._scenario_capture_btn.config(state="normal")
-            self._scenario_reset_btn.config(state="disabled")
-            self._set_scenario_text(
-                "Scenario started.\n\n"
-                "STEP 1: Position the camera at\n"
-                "the REFERENCE position with\n"
-                "AprilTags visible.\n\n"
-                "Then click 'Capture reference'."
-            )
+            self._auto_markers_list.delete(0, tk.END)
+        self._set_scenario_text("Basic mode.\nNo scenario active.")
+
+    def _start_offset_scenario(self) -> None:
+        """Activate the offset-calibration scenario."""
+        self._scenario = CameraOffsetScenario(
+            camera=self.camera,
+            detector=self.detector,
+            frame_width=self.camera.actual_width,
+        )
+        self._scenario_active = True
+        self._last_offset_result = None
+        self._scenario_capture_btn.config(state="normal")
+        self._scenario_reset_btn.config(state="disabled")
+        self._set_scenario_text(
+            "Offset mode started.\n\n"
+            "STEP 1: Position the camera at\n"
+            "the REFERENCE position with\n"
+            "AprilTags visible.\n\n"
+            "Then click 'Capture reference'."
+        )
+        self._scenario_notebook.select(self._offset_tab)
+
+    def _start_slam_scenario(self) -> None:
+        """Activate the SLAM map-building scenario."""
+        self._slam_calibrator = SlamCalibrator(tag_size_cm=5.0)
+        self._slam_active = True
+        self._last_robot_pose = RobotPose3D()
+        self._slam_reset_btn.config(state="normal")
+        self._slam_save_btn.config(state="normal")
+        self._slam_robot_var.set("SLAM started.\nWaiting for markers…")
+        self._scenario_notebook.select(self._slam_tab)
+
+    def _start_auto_scenario(self) -> None:
+        """Activate the auto-follow scenario."""
+        marker_id = self._auto_marker_var.get().strip() or None
+        self._auto_scenario = AutoFollowScenario(
+            camera=self.camera,
+            detector=self.detector,
+            frame_width=self.camera.actual_width,
+            frame_height=self.camera.actual_height,
+            target_marker_id=marker_id,
+        )
+        self._auto_active = True
+        self._last_auto_result = None
+        self._auto_info_var.set("Auto-follow started.\nWaiting for markers…")
+        self._scenario_notebook.select(self._auto_tab)
+
+    # ── Offset callbacks ──────────────────────────────────────────────────
 
     def _on_scenario_capture_reference(self) -> None:
         """Capture the current detections as the reference frame."""
@@ -973,28 +1018,6 @@ class RoboEyeSenseApp:
 
     # ── SLAM callbacks ────────────────────────────────────────────────────
 
-    def _on_slam_start(self) -> None:
-        """Start or stop the SLAM map-building scenario."""
-        if self._slam_active:
-            self._slam_active = False
-            self._slam_calibrator = None
-            self._last_robot_pose = RobotPose3D()
-            self._slam_start_btn.config(text="Start SLAM")
-            self._slam_reset_btn.config(state="disabled")
-            self._slam_save_btn.config(state="disabled")
-            self._slam_robot_var.set("Position: –\nOrientation: –")
-            self._slam_markers_list.delete(0, tk.END)
-        else:
-            self._slam_calibrator = SlamCalibrator(tag_size_cm=5.0)
-            self._slam_active = True
-            self._last_robot_pose = RobotPose3D()
-            self._slam_start_btn.config(text="Stop SLAM")
-            self._slam_reset_btn.config(state="normal")
-            self._slam_save_btn.config(state="normal")
-            self._slam_robot_var.set("SLAM started.\nWaiting for markers…")
-            # Switch to SLAM tab
-            self._scenario_notebook.select(self._slam_tab)
-
     def _on_slam_reset(self) -> None:
         """Reset the SLAM calibrator (clear the marker map)."""
         if self._slam_calibrator is None:
@@ -1021,34 +1044,6 @@ class RoboEyeSenseApp:
 
     # ── Auto-follow callbacks ─────────────────────────────────────────────
 
-    def _on_auto_start(self) -> None:
-        """Start or stop the auto-follow scenario."""
-        if self._auto_active:
-            self._auto_active = False
-            self._auto_scenario = None
-            self._last_auto_result = None
-            self._auto_start_btn.config(text="Start auto")
-            self._auto_info_var.set(
-                "Auto-follow not started.\n"
-                "Click 'Start auto' to begin."
-            )
-            self._auto_markers_list.delete(0, tk.END)
-        else:
-            marker_id = self._auto_marker_var.get().strip() or None
-            self._auto_scenario = AutoFollowScenario(
-                camera=self.camera,
-                detector=self.detector,
-                frame_width=self.camera.actual_width,
-                frame_height=self.camera.actual_height,
-                target_marker_id=marker_id,
-            )
-            self._auto_active = True
-            self._last_auto_result = None
-            self._auto_start_btn.config(text="Stop auto")
-            self._auto_info_var.set("Auto-follow started.\nWaiting for markers…")
-            # Switch to Auto tab
-            self._scenario_notebook.select(self._auto_tab)
-
     def _on_auto_marker_id_change(self, _event: Optional[object] = None) -> None:
         """Update the target marker ID for auto-follow."""
         if self._auto_scenario is None:
@@ -1066,20 +1061,17 @@ class RoboEyeSenseApp:
             self._start_recording()
 
     def _start_recording(self) -> None:
-        """Prompt for a file path and begin recording."""
-        from tkinter import filedialog
-
+        """Begin recording to a timestamped file in the 'video' directory."""
         if self._record_path:
             path = self._record_path
             self._record_path = None  # use only once from CLI
         else:
-            path = filedialog.asksaveasfilename(
-                title="Save recording as",
-                defaultextension=".mp4",
-                filetypes=[("MP4 video", "*.mp4"), ("All files", "*.*")],
-            )
-        if not path:
-            return
+            # Auto-generate a timestamped filename inside the 'video' folder
+            # located in the project root directory (next to main.py).
+            video_dir = Path(__file__).resolve().parent.parent / "video"
+            video_dir.mkdir(exist_ok=True)
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = str(video_dir / f"recording_{ts}.mp4")
         try:
             self._recorder = VideoRecorder(
                 path,
@@ -1201,10 +1193,10 @@ class RoboEyeSenseApp:
 
         # Status bar
         n = len(detections)
-        mode_label = _MODE_DISPLAY_INV.get(self.detector.mode, "")
+        quality_label = _QUALITY_DISPLAY_INV.get(self.detector.mode, "")
         rec_label = "  |  ● REC" if (self._recorder is not None and self._recorder.is_recording) else ""
         self._status_var.set(
-            f"FPS: {self._fps_display:.1f}  |  Mode: {mode_label}  |  Detections: {n}{rec_label}"
+            f"FPS: {self._fps_display:.1f}  |  Quality: {quality_label}  |  Detections: {n}{rec_label}"
         )
 
         # Schedule next update

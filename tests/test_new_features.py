@@ -304,7 +304,7 @@ class TestHeadlessOffsetRecapture:
 
             rc = main([
                 "--source", str(video), "--headless",
-                "--scenario", "offset",
+                "--mode", "offset",
             ])
 
         assert rc == 0
@@ -327,7 +327,7 @@ class TestHeadlessOffsetRecapture:
 
             rc = main([
                 "--source", str(video), "--headless",
-                "--scenario", "offset",
+                "--mode", "offset",
             ])
 
         assert rc == 0

@@ -9,14 +9,16 @@ Run with a live camera (default: camera index 0, 640×480, all detectors on)::
 
     python main.py
 
-Run in fast (low-power) mode – input is downscaled by 50 % before detection::
+Run with low quality (fast, low-power) – input is downscaled by 50 % before
+detection::
 
-    python main.py --mode fast
+    python main.py --quality low
 
-Run in robust (motion-blur-resistant) mode – unsharp-mask sharpening and
-Kalman-filter tracking for better performance under rapid motion::
+Run with high quality (robust, motion-blur-resistant) – unsharp-mask
+sharpening and Kalman-filter tracking for better performance under rapid
+motion::
 
-    python main.py --mode robust
+    python main.py --quality high
 
 Run with the full Tkinter GUI (requires ``python3-tk``)::
 
@@ -41,11 +43,11 @@ Record in headless mode (no display, but save video)::
 Run the camera-offset calibration scenario – determine how much the camera
 has moved relative to a reference position by comparing AprilTag markers::
 
-    python main.py --scenario offset
+    python main.py --mode offset
 
 Run the scenario in headless mode (no display)::
 
-    python main.py --scenario offset --headless
+    python main.py --mode offset --headless
 
 Press **q** to quit the OpenCV display window (non-GUI, non-headless mode).
 """
@@ -63,6 +65,12 @@ from robo_eye_sense.results import DetectionMode, DetectionType
 
 import cv2  # noqa: E402  – imported after robo_eye_sense to apply Qt font fix
 
+# Maps the --quality CLI value to the internal DetectionMode enum.
+_QUALITY_TO_DETECTION_MODE: dict[str, DetectionMode] = {
+    "low": DetectionMode.FAST,
+    "normal": DetectionMode.NORMAL,
+    "high": DetectionMode.ROBUST,
+}
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -112,14 +120,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--mode",
+        "--quality",
         default="normal",
-        choices=["normal", "fast", "robust"],
+        choices=["low", "normal", "high"],
         help=(
-            "Operating mode: "
+            "Detection quality: "
+            "'low' – downscales frames for low-power hardware (fast); "
             "'normal' – balanced default; "
-            "'fast' – downscales frames for low-power hardware; "
-            "'robust' – sharpening + Kalman tracking for motion-blur resistance."
+            "'high' – sharpening + Kalman tracking for motion-blur resistance."
         ),
     )
     parser.add_argument(
@@ -139,11 +147,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Record the video feed to FILE (e.g. output.mp4).",
     )
     parser.add_argument(
-        "--scenario",
-        choices=["offset", "slam", "auto"],
-        default=None,
+        "--mode",
+        choices=["basic", "offset", "slam", "auto"],
+        default="basic",
         help=(
-            "Run a predefined scenario instead of the normal detection loop. "
+            "Operating mode.  'basic' – normal detection loop (default); "
             "'offset' – capture a reference frame, then compute the camera "
             "displacement vector after the camera has been moved. "
             "'slam' – incrementally build a marker map from the camera feed, "
@@ -237,16 +245,16 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
 
     print(f"{APP_NAME} {__version__}")
 
-    mode = DetectionMode(args.mode)
+    mode = _QUALITY_TO_DETECTION_MODE[args.quality]
 
     # ── Startup configuration summary ─────────────────────────────────
     display_label = _display_mode_label(args)
     print(f"Display mode      : {display_label}")
-    print(f"Detection mode    : {args.mode}")
+    print(f"Quality           : {args.quality}")
     print(f"Detectors enabled : {_enabled_detectors_label(args)}")
     print(f"Source            : {args.source}")
-    if args.scenario:
-        print(f"Scenario          : {args.scenario}")
+    if args.mode and args.mode != "basic":
+        print(f"Scenario          : {args.mode}")
     if args.record:
         print(f"Record to         : {args.record}")
 
@@ -295,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         return 0
 
     # ── Scenario mode ─────────────────────────────────────────────────────
-    if args.scenario == "offset":
+    if args.mode == "offset":
         from robo_eye_sense.offset_scenario import CameraOffsetScenario
 
         scenario = CameraOffsetScenario(camera=cam, detector=detector)
@@ -473,7 +481,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         return 0
 
     # ── SLAM scenario mode ────────────────────────────────────────────────
-    if args.scenario == "slam":
+    if args.mode == "slam":
         from robo_eye_sense.marker_map import SlamCalibrator
 
         calibrator = SlamCalibrator(tag_size_cm=5.0)
@@ -579,7 +587,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         return 0
 
     # ── Auto-follow scenario mode ─────────────────────────────────────────
-    if args.scenario == "auto":
+    if args.mode == "auto":
         from robo_eye_sense.auto_scenario import AutoFollowScenario
 
         auto = AutoFollowScenario(

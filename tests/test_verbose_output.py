@@ -137,7 +137,7 @@ class TestStartupConfigSummary:
         out = capsys.readouterr().out
         assert "Display mode" in out
         assert "headless" in out
-        assert "Detection mode" in out
+        assert "Quality" in out
         assert "normal" in out
         assert "Detectors enabled" in out
         assert "AprilTag" in out
@@ -154,10 +154,10 @@ class TestStartupConfigSummary:
         ):
             from main import main
 
-            main(["--source", str(video), "--headless", "--mode", "fast"])
+            main(["--source", str(video), "--headless", "--quality", "low"])
 
         out = capsys.readouterr().out
-        assert "fast" in out
+        assert "low" in out
 
     def test_headless_prints_scenario_when_set(self, capsys, tmp_path):
         video = tmp_path / "black.mp4"
@@ -171,7 +171,7 @@ class TestStartupConfigSummary:
 
             main([
                 "--source", str(video), "--headless",
-                "--scenario", "offset",
+                "--mode", "offset",
             ])
 
         out = capsys.readouterr().out
@@ -273,7 +273,7 @@ class TestOffsetScenarioVerboseOutput:
 
             rc = main([
                 "--source", str(video), "--headless",
-                "--scenario", "offset",
+                "--mode", "offset",
             ])
 
         assert rc == 0
@@ -298,7 +298,7 @@ class TestOffsetScenarioVerboseOutput:
 
             rc = main([
                 "--source", str(video),
-                "--scenario", "offset",
+                "--mode", "offset",
             ])
 
         assert rc == 0
@@ -328,7 +328,7 @@ class TestSlamScenarioVerboseOutput:
 
             rc = main([
                 "--source", str(video), "--headless",
-                "--scenario", "slam",
+                "--mode", "slam",
                 "--map-file", str(tmp_path / "map.json"),
             ])
 
