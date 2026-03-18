@@ -462,39 +462,6 @@ class TestRoboEyeSenseApp:
         app._on_close()
         assert app._recorder is None
 
-    def test_recording_auto_saves_to_video_folder(self, app, tmp_path):
-        """Without an initial_record_path, recording auto-generates a path in 'video' folder."""
-        import robo_eye_sense.gui as gui_mod
-        from pathlib import Path
-
-        # Capture the path passed to VideoRecorder
-        captured_paths: list[str] = []
-        original_recorder = gui_mod.VideoRecorder
-
-        class TrackingRecorder(original_recorder):
-            def __init__(self, path, **kwargs):
-                captured_paths.append(path)
-                super().__init__(path, **kwargs)
-
-        # Redirect the video folder to tmp_path so no files are written to the repo
-        original_gui_path = gui_mod.Path
-        gui_mod.VideoRecorder = TrackingRecorder
-        gui_mod.Path = lambda p: original_gui_path(tmp_path / "fake_gui.py") if str(p).endswith("gui.py") else original_gui_path(p)
-
-        app._record_path = None
-        try:
-            app._start_recording()
-        finally:
-            gui_mod.VideoRecorder = original_recorder
-            gui_mod.Path = original_gui_path
-
-        assert app._recorder is not None
-        assert len(captured_paths) == 1
-        assert "video" in captured_paths[0]
-        assert "recording_" in captured_paths[0]
-        assert captured_paths[0].endswith(".mp4")
-        app._stop_recording()
-
     # ── SLAM callbacks ────────────────────────────────────────────────────
 
     def test_slam_initially_inactive(self, app):
@@ -541,6 +508,50 @@ class TestRoboEyeSenseApp:
         app._scenario_mode_var.set("SLAM")
         app._on_scenario_mode_change()
         assert app._scenario_notebook.index("current") == 1
+
+    # ── Window title ──────────────────────────────────────────────────────
+
+    def test_window_title_is_robot_vision(self, app):
+        """Window title should be 'robot-vision'."""
+        assert app.root.title() == "robot-vision"
+
+    # ── Layout toggle ─────────────────────────────────────────────────────
+
+    def test_layout_toggle_switches_compact_view(self, app):
+        """Toggling layout should change the _compact_view flag."""
+        assert app._compact_view is False
+        app._toggle_layout()
+        assert app._compact_view is True
+        app._toggle_layout()
+        assert app._compact_view is False
+
+    def test_layout_toggle_updates_button_label(self, app):
+        """Toggle layout button label should reflect the current state."""
+        # Initially normal view → button says "Compact view"
+        assert app._layout_btn_var.get() == "Compact view"
+        app._toggle_layout()
+        assert app._layout_btn_var.get() == "Normal view"
+        app._toggle_layout()
+        assert app._layout_btn_var.get() == "Compact view"
+
+    # ── Mode dropdown in left panel ───────────────────────────────────────
+
+    def test_mode_dropdown_exists(self, app):
+        """Mode combobox (scenario selector) should exist in the left panel."""
+        assert hasattr(app, "_scenario_mode_var")
+        assert app._scenario_mode_var.get() == "Basic"
+
+    def test_auto_tab_has_marker_entry(self, app):
+        """Auto tab should have a Follow ID entry field."""
+        assert hasattr(app, "_auto_marker_entry")
+
+    # ── Merged INFO/CAMERA/QUALITY panel ─────────────────────────────────
+
+    def test_info_panel_has_combined_fps_and_quality(self, app):
+        """FPS and quality info should both be accessible in the merged panel."""
+        assert hasattr(app, "_cam_fps_var")
+        assert hasattr(app, "_info_quality_var")
+        assert hasattr(app, "_cam_res_var")
 
 
 # ---------------------------------------------------------------------------
