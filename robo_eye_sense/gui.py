@@ -252,10 +252,12 @@ class RoboEyeSenseApp:
         # Tunable parameters
         _laser = detector.laser_detector
         _init_threshold = _laser.brightness_threshold if _laser is not None else 240
+        _init_threshold_max = _laser.brightness_threshold_max if _laser is not None else 255
         _init_target_area = _laser.target_area if _laser is not None else 100
         _init_sensitivity = _laser.sensitivity if _laser is not None else 50
         _init_channels = _laser.channels if _laser is not None else "bgr"
         self._laser_threshold = tk.IntVar(value=_init_threshold)
+        self._laser_threshold_max = tk.IntVar(value=_init_threshold_max)
         self._laser_target_area = tk.IntVar(value=_init_target_area)
         self._laser_sensitivity = tk.IntVar(value=_init_sensitivity)
         self._laser_ch_r = tk.BooleanVar(value="r" in _init_channels)
@@ -400,7 +402,7 @@ class RoboEyeSenseApp:
         ttk.Label(parent, text="Parameters").pack(anchor="w")
 
         # Laser threshold
-        ttk.Label(parent, text="Laser threshold (0–255)").pack(
+        ttk.Label(parent, text="Laser threshold min (0–255)").pack(
             anchor="w", pady=(6, 0)
         )
         self._threshold_label = ttk.Label(
@@ -414,6 +416,23 @@ class RoboEyeSenseApp:
             orient="horizontal",
             variable=self._laser_threshold,
             command=self._on_threshold_change,
+        ).pack(fill="x")
+
+        # Laser threshold max
+        ttk.Label(parent, text="Laser threshold max (0–255)").pack(
+            anchor="w", pady=(6, 0)
+        )
+        self._threshold_max_label = ttk.Label(
+            parent, text=str(self._laser_threshold_max.get())
+        )
+        self._threshold_max_label.pack(anchor="e")
+        ttk.Scale(
+            parent,
+            from_=0,
+            to=255,
+            orient="horizontal",
+            variable=self._laser_threshold_max,
+            command=self._on_threshold_max_change,
         ).pack(fill="x")
 
         # Laser target area
@@ -728,6 +747,7 @@ class RoboEyeSenseApp:
         if self._enable_laser.get():
             self.detector.enable_laser(
                 brightness_threshold=self._laser_threshold.get(),
+                brightness_threshold_max=self._laser_threshold_max.get(),
                 target_area=self._laser_target_area.get(),
                 sensitivity=self._laser_sensitivity.get(),
                 channels=self._laser_channels_str(),
@@ -759,6 +779,14 @@ class RoboEyeSenseApp:
         laser = self.detector.laser_detector
         if laser is not None:
             laser.brightness_threshold = val
+
+    def _on_threshold_max_change(self, _value: Optional[str] = None) -> None:
+        """Apply the new laser-threshold-max value."""
+        val = self._laser_threshold_max.get()
+        self._threshold_max_label.config(text=str(val))
+        laser = self.detector.laser_detector
+        if laser is not None:
+            laser.brightness_threshold_max = val
 
     def _on_target_area_change(self, _value: Optional[str] = None) -> None:
         """Apply the new laser target-area value."""
