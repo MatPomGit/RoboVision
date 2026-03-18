@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import warnings
 from typing import List, Optional
 
+import cv2
 import numpy as np
 
 from .results import Detection, DetectionType
