@@ -394,6 +394,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                             elif cmd:
                                 print(f"Unknown command: {cmd!r}")
                     except io.UnsupportedOperation:
+                        # stdin may be a pseudofile in test harnesses or
+                        # other environments that don't support fileno().
                         pass
 
                     print("Offset scenario finished.")
