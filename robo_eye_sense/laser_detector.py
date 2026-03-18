@@ -65,6 +65,11 @@ class LaserSpotDetector:
         used.  When a subset is selected, only the chosen channels are
         averaged to produce the brightness image, making it possible to
         isolate e.g. a red laser by passing ``channels="r"``.
+    brightness_threshold_max:
+        Upper grayscale intensity threshold (0-255).  Only pixels with
+        brightness between *brightness_threshold* and
+        *brightness_threshold_max* are considered candidates.  Default
+        ``255`` preserves the original behaviour (no upper bound).
     """
 
     def __init__(
@@ -77,6 +82,7 @@ class LaserSpotDetector:
         target_area: int = 100,
         sensitivity: int = 50,
         channels: str = "rgb",
+        brightness_threshold_max: int = 255,
     ) -> None:
         if not (0 <= brightness_threshold <= 255):
             raise ValueError(
@@ -192,8 +198,8 @@ class LaserSpotDetector:
             else:
                 gray = np.mean(frame[:, :, indices], axis=2).astype(np.uint8)
 
-        # Isolate pixels within the brightness range and store the raw mask
-        # for the GUI overlay.
+        # Isolate bright regions within the configured intensity range
+        # and store the raw mask for the GUI overlay.
         if self.brightness_threshold_max < 255:
             thresh = cv2.inRange(
                 gray,
