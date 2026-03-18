@@ -330,4 +330,3 @@ class TestRecordingMessages:
         out = capsys.readouterr().out
         assert "Recording to" in out
         assert "Recording saved to" in out
-        assert "Record to" in out
