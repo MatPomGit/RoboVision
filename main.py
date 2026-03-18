@@ -147,12 +147,44 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _display_mode_label(args: argparse.Namespace) -> str:
+    """Return a human-readable label for the current display mode."""
+    if args.gui:
+        return "gui"
+    if args.headless:
+        return "headless"
+    return "display"
+
+
+def _enabled_detectors_label(args: argparse.Namespace) -> str:
+    """Return a comma-separated list of enabled detector names."""
+    names: list[str] = []
+    if not args.no_apriltag:
+        names.append("AprilTag")
+    if args.qr:
+        names.append("QR")
+    if args.laser:
+        names.append("Laser")
+    return ", ".join(names) if names else "none"
+
+
 def main(argv: list[str] | None = None) -> int:  # noqa: C901
     args = _parse_args(argv)
 
     print(f"{APP_NAME} {__version__}")
 
     mode = DetectionMode(args.mode)
+
+    # ── Startup configuration summary ─────────────────────────────────
+    display_label = _display_mode_label(args)
+    print(f"Display mode      : {display_label}")
+    print(f"Detection mode    : {args.mode}")
+    print(f"Detectors enabled : {_enabled_detectors_label(args)}")
+    print(f"Source            : {args.source}")
+    if args.scenario:
+        print(f"Scenario          : {args.scenario}")
+    if args.record:
+        print(f"Record to         : {args.record}")
 
     detector = RoboEyeDetector(
         enable_apriltag=not args.no_apriltag,
@@ -175,6 +207,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
+
+    print(
+        f"Camera opened     : {cam.actual_width}x{cam.actual_height} "
+        f"@ {cam.actual_fps:.1f} FPS"
+    )
 
     # ── Scenario mode ─────────────────────────────────────────────────────
     if args.scenario == "offset":
@@ -200,9 +237,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                     recorder.start()
                     print(f"Recording to {args.record}")
 
+                print("Starting offset scenario...")
+
                 if args.headless:
                     # Headless scenario: capture reference immediately,
                     # then compute offset on next frame and exit.
+                    print("Capturing reference frame...")
                     ref = scenario.capture_reference()
                     april_ref = [
                         d
@@ -219,12 +259,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                             file=sys.stderr,
                         )
 
+                    print("Capturing current frame and computing offset...")
                     result = scenario.compute_current_offset()
                 else:
                     input(
                         "Place the camera at the REFERENCE position with AprilTags "
                         "visible, then press Enter…"
                     )
+                    print("Capturing reference frame...")
                     ref = scenario.capture_reference()
                     april_ref = [
                         d
@@ -244,6 +286,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                     input(
                         "Move the camera to the NEW position, then press Enter…"
                     )
+                    print("Capturing current frame and computing offset...")
                     result = scenario.compute_current_offset()
 
                 print(f"\n{'='*50}")
@@ -259,12 +302,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                     ):
                         print(f"  tag {tag_id:>4s}: ({tdx:+.1f}, {tdy:+.1f}) px")
                 print(f"{'='*50}")
+                print("Offset scenario finished.")
         except RuntimeError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 1
         finally:
             if recorder is not None:
                 recorder.stop()
+                print(f"Recording saved to {args.record}")
         return 0
 
     # ── SLAM scenario mode ────────────────────────────────────────────────
@@ -290,6 +335,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                     recorder.start()
                     print(f"Recording to {args.record}")
 
+                print("Starting SLAM calibration...")
+                print("Scanning for AprilTag markers. Press q to stop (display mode).")
+
                 frame_idx = 0
                 while True:
                     frame = cam.read()
@@ -308,6 +356,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                                 f"robot=({rx:+.1f}, {ry:+.1f}, {rz:+.1f}) cm  "
                                 f"markers_in_map={len(calibrator.marker_map)}  "
                                 f"visible={robot_pose.visible_markers}"
+                            )
+                        else:
+                            print(
+                                f"[frame {frame_idx}] "
+                                f"No markers visible  "
+                                f"markers_in_map={len(calibrator.marker_map)}"
                             )
                         if recorder is not None:
                             vis = detector.draw_detections(frame.copy(), detections)
@@ -330,6 +384,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                         cv2.imshow("RoboEyeSense – SLAM", vis)
                         if cv2.waitKey(1) & 0xFF == ord("q"):
                             break
+
+                print("Stream ended.")
 
                 # Save marker map
                 mmap = calibrator.marker_map
@@ -357,6 +413,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         finally:
             if recorder is not None:
                 recorder.stop()
+                print(f"Recording saved to {args.record}")
             if not args.headless:
                 cv2.destroyAllWindows()
         return 0
@@ -374,6 +431,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
             return 1
         from robo_eye_sense.gui import RoboEyeSenseApp
 
+        print("Launching GUI...")
         root = tk.Tk()
         with cam:
             app = RoboEyeSenseApp(
@@ -398,6 +456,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     fps_counter = 0
     fps_display = 0.0
     t_fps = time.perf_counter()
+    frame_total = 0
+
+    print("Starting detection loop...")
+    if not args.headless:
+        print("Press q in the display window to quit.")
 
     try:
         with cam:
@@ -411,6 +474,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                     break
 
                 detections = detector.process_frame(frame)
+                frame_total += 1
 
                 # FPS calculation
                 fps_counter += 1
@@ -422,8 +486,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                     t_fps = t_now
 
                 if args.headless:
-                    for d in detections:
-                        print(d)
+                    if detections:
+                        for d in detections:
+                            print(f"[frame {frame_total}] {d}")
+                    else:
+                        print(
+                            f"[frame {frame_total}] "
+                            f"No detections  (FPS: {fps_display:.1f})"
+                        )
                     if recorder is not None:
                         vis = detector.draw_detections(frame.copy(), detections)
                         recorder.write_frame(vis)
@@ -444,6 +514,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                     cv2.imshow("RoboEyeSense", vis)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
+
+            print(f"Stream ended. Total frames processed: {frame_total}")
     finally:
         if recorder is not None:
             recorder.stop()
