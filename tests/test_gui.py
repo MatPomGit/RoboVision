@@ -541,8 +541,8 @@ class TestRoboEyeSenseApp:
         assert hasattr(app, "_scenario_mode_var")
         assert app._scenario_mode_var.get() == "Basic"
 
-    def test_auto_tab_has_marker_entry(self, app):
-        """Auto tab should have a Follow ID entry field."""
+    def test_follow_tab_has_marker_entry(self, app):
+        """Follow tab should have a Follow ID entry field."""
         assert hasattr(app, "_auto_marker_entry")
 
     # ── Merged INFO/CAMERA/QUALITY panel ─────────────────────────────────

@@ -148,7 +148,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=["basic", "offset", "slam", "auto"],
+        choices=["basic", "offset", "slam", "calibration", "box", "pose", "follow"],
         default="basic",
         help=(
             "Operating mode.  'basic' – normal detection loop (default); "
@@ -156,9 +156,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "displacement vector after the camera has been moved. "
             "'slam' – incrementally build a marker map from the camera feed, "
             "estimating the 3-D pose of every visible AprilTag and the robot. "
-            "'auto' – continuously follow a selected AprilTag marker, "
-            "computing the position vector (X, Y) and yaw rotation needed "
-            "to centre it in the frame."
+            "'calibration' – compute camera intrinsics from chessboard images. "
+            "'box' – detect box-like (cuboid) objects in real-time. "
+            "'pose' – estimate 6-DoF pose of AprilTags using solvePnP. "
+            "'follow' – actively track an AprilTag or box and generate "
+            "control signals (replaces the old 'auto' mode)."
         ),
     )
     parser.add_argument(
@@ -176,9 +178,43 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         metavar="ID",
         help=(
-            "In 'auto' scenario mode, the ID of the AprilTag marker to "
+            "In 'follow' mode, the ID of the AprilTag marker to "
             "follow.  When omitted the first visible marker is used."
         ),
+    )
+    parser.add_argument(
+        "--follow-box",
+        action="store_true",
+        help=(
+            "In 'follow' mode, fall back to box tracking when no "
+            "AprilTags are visible."
+        ),
+    )
+    parser.add_argument(
+        "--target-distance",
+        type=float,
+        default=0.5,
+        help="Desired distance to the target in metres (follow mode).",
+    )
+    parser.add_argument(
+        "--chessboard-size",
+        default="9x6",
+        help=(
+            "Inner corner dimensions of the calibration chessboard "
+            "(COLSxROWS, e.g. '9x6')."
+        ),
+    )
+    parser.add_argument(
+        "--calib-output",
+        default="calibration.npz",
+        metavar="FILE",
+        help="Output file for camera calibration data.",
+    )
+    parser.add_argument(
+        "--tag-size",
+        type=float,
+        default=0.05,
+        help="Physical side length of AprilTags in metres (pose/follow modes).",
     )
     parser.add_argument(
         "--info",
@@ -586,17 +622,39 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                 cv2.destroyAllWindows()
         return 0
 
-    # ── Auto-follow scenario mode ─────────────────────────────────────────
-    if args.mode == "auto":
-        from robo_eye_sense.auto_scenario import AutoFollowScenario
+    # ── New operational modes (calibration / box / pose / follow) ────────
+    if args.mode in ("calibration", "box", "pose", "follow"):
+        from modes import BoxMode, CalibrationMode, FollowMode, PoseMode
 
-        auto = AutoFollowScenario(
-            camera=cam,
-            detector=detector,
-            frame_width=cam.actual_width,
-            frame_height=cam.actual_height,
-            target_marker_id=args.follow_marker,
-        )
+        if args.mode == "calibration":
+            try:
+                cols, rows = (int(x) for x in args.chessboard_size.split("x"))
+            except ValueError:
+                print(
+                    f"ERROR: invalid --chessboard-size {args.chessboard_size!r} "
+                    f"(expected COLSxROWS, e.g. '9x6')",
+                    file=sys.stderr,
+                )
+                return 1
+            active_mode = CalibrationMode(
+                chessboard_size=(cols, rows),
+                output_path=args.calib_output,
+            )
+        elif args.mode == "box":
+            active_mode = BoxMode()
+        elif args.mode == "pose":
+            active_mode = PoseMode(
+                tag_size=args.tag_size,
+                calibration_path=args.calib_output,
+            )
+        elif args.mode == "follow":
+            active_mode = FollowMode(
+                follow_marker=args.follow_marker,
+                follow_box=args.follow_box,
+                target_distance=args.target_distance,
+                tag_size=args.tag_size,
+                calibration_path=args.calib_output,
+            )
 
         recorder = None
         if args.record:
@@ -609,68 +667,57 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                 fps=cam.actual_fps or 30.0,
             )
 
+        fps_counter = 0
+        fps_display = 0.0
+        t_fps = time.perf_counter()
+        frame_idx = 0
+
+        print(f"Starting {args.mode} mode...")
+        if not args.headless:
+            print("Press q in the display window to quit.")
+
         try:
             with cam:
                 if recorder is not None:
                     recorder.start()
                     print(f"Recording to {args.record}")
 
-                follow_label = (
-                    f"marker {args.follow_marker}"
-                    if args.follow_marker
-                    else "first visible marker"
-                )
-                print(f"Starting auto-follow scenario (target: {follow_label})...")
-                if not args.headless:
-                    print("Press q in the display window to quit.")
-
-                frame_idx = 0
                 while True:
                     frame = cam.read()
                     if frame is None:
                         break
 
-                    detections = detector.process_frame(frame)
-                    result = auto.compute_from_detections(detections)
                     frame_idx += 1
 
-                    if args.headless:
-                        dx, dy = result.position_vector
-                        if result.target_found:
-                            print(
-                                f"[frame {frame_idx}] "
-                                f"target={result.target_marker_id}  "
-                                f"vector=({dx:+.1f}, {dy:+.1f}) px  "
-                                f"yaw={result.yaw:+.1f}°  "
-                                f"visible={result.visible_marker_ids}"
-                            )
-                        else:
-                            print(
-                                f"[frame {frame_idx}] "
-                                f"No target marker found  "
-                                f"visible={result.visible_marker_ids}"
-                            )
-                        if recorder is not None:
-                            vis = detector.draw_detections(frame.copy(), detections)
-                            recorder.write_frame(vis)
-                    else:
-                        vis = detector.draw_detections(frame.copy(), detections)
-                        dx, dy = result.position_vector
-                        info = (
-                            f"AUTO: target={result.target_marker_id or '-'}  "
-                            f"vec=({dx:+.1f},{dy:+.1f})  "
-                            f"yaw={result.yaw:+.1f}"
-                        )
-                        cv2.putText(
-                            vis, info, (8, 24),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                            (0, 255, 255), 1, cv2.LINE_AA,
-                        )
-                        if recorder is not None:
-                            recorder.write_frame(vis)
-                        cv2.imshow("RoboEyeSense – Auto Follow", vis)
-                        if cv2.waitKey(1) & 0xFF == ord("q"):
+                    # FPS calculation
+                    fps_counter += 1
+                    t_now = time.perf_counter()
+                    elapsed = t_now - t_fps
+                    if elapsed >= 1.0:
+                        fps_display = fps_counter / elapsed
+                        fps_counter = 0
+                        t_fps = t_now
+
+                    key = -1
+                    if not args.headless:
+                        key = cv2.waitKey(1) & 0xFF
+                        if key == ord("q"):
                             break
+
+                    ctx = {
+                        "headless": args.headless,
+                        "key": key,
+                        "frame_idx": frame_idx,
+                        "fps": fps_display,
+                    }
+
+                    vis = active_mode.run(frame, ctx)
+
+                    if not args.headless:
+                        cv2.imshow(f"RoboEyeSense – {args.mode}", vis)
+
+                    if recorder is not None:
+                        recorder.write_frame(vis)
 
                 print(f"Stream ended. Total frames: {frame_idx}")
         except RuntimeError as exc:
