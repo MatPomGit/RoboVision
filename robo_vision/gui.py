@@ -65,6 +65,7 @@ from .auto_scenario import AutoFollowResult, AutoFollowScenario
 from .detector import RoboEyeDetector, _compute_orientation
 from .marker_map import MarkerPose3D, RobotPose3D, SlamCalibrator
 from .offset_scenario import CameraOffsetScenario, OffsetResult
+from .overlay import OverlayRenderer
 from .recorder import VideoRecorder
 from .results import Detection, DetectionMode, DetectionType
 
@@ -338,6 +339,14 @@ class RoboEyeSenseApp:
         )
         self._fps_target_var = tk.StringVar(value="30")
 
+        # On-screen overlay renderer
+        self._overlay = OverlayRenderer(
+            enabled=True,
+            mode=self._mode_var.get().lower(),
+            quality=self._quality_var.get().lower(),
+            enabled_detectors=self._initial_detector_names(),
+        )
+
         # Build the UI
         self._build_ui()
 
@@ -348,6 +357,32 @@ class RoboEyeSenseApp:
         self.root.bind("<Control-Key-1>", lambda _e: self._set_quality(DetectionMode.FAST))
         self.root.bind("<Control-Key-2>", lambda _e: self._set_quality(DetectionMode.NORMAL))
         self.root.bind("<Control-Key-3>", lambda _e: self._set_quality(DetectionMode.ROBUST))
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Overlay helpers
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _initial_detector_names(self) -> List[str]:
+        """Return a list of enabled detector display names at startup."""
+        names: List[str] = []
+        if self._enable_april.get():
+            names.append("AprilTags")
+        if self._enable_qr.get():
+            names.append("QR codes")
+        if self._enable_laser.get():
+            names.append("Laser spots")
+        return names
+
+    def _overlay_detector_names(self) -> List[str]:
+        """Return the current list of enabled detector display names."""
+        names: List[str] = []
+        if self.detector.april_enabled:
+            names.append("AprilTags")
+        if self.detector.qr_enabled:
+            names.append("QR codes")
+        if self.detector.laser_enabled:
+            names.append("Laser spots")
+        return names
 
     # ──────────────────────────────────────────────────────────────────────
     # UI construction
@@ -1068,6 +1103,7 @@ class RoboEyeSenseApp:
         # Update the description label and info-panel indicator
         self._quality_desc_var.set(_QUALITY_DESCRIPTIONS.get(new_mode, ""))
         self._info_quality_var.set(label)
+        self._overlay.quality = label.lower()
 
     # ── Mode callbacks ──────────────────────────────────────────────────────
 
@@ -1075,6 +1111,7 @@ class RoboEyeSenseApp:
         """Switch to the selected mode."""
         new_mode = self._mode_var.get()
         self._mode_changing = True
+        self._overlay.mode = new_mode.lower()
         try:
             # Stop all currently active modes
             self._stop_all_modes()
@@ -1245,13 +1282,46 @@ class RoboEyeSenseApp:
         self._calibration_active = True
         self._calib_capture_btn.config(state="normal")
         self._calib_run_btn.config(state="disabled")
-        self._calib_status_var.set(
+        status = (
             f"Calibration started (board {cols}×{rows}).\n"
             "Hold the chessboard in view and\n"
             "click 'Capture frame' to collect\n"
             f"samples (need {_CALIB_MIN_CAPTURES}/25)."
         )
+        existing = self._load_calib_file_info(output)
+        if existing:
+            status += f"\n\nExisting calibration loaded from:\n{output}\n{existing}"
+        self._calib_status_var.set(status)
         self._mode_notebook.select(self._calibration_tab)
+
+    @staticmethod
+    def _load_calib_file_info(path: str) -> str:
+        """Return a human-readable summary of an existing .npz calibration file.
+
+        Returns an empty string when the file does not exist or cannot be read.
+        """
+        calib_path = Path(path)
+        if not calib_path.exists():
+            return ""
+        try:
+            data = np.load(str(calib_path))
+            lines: list[str] = []
+            if "camera_matrix" in data:
+                cm = data["camera_matrix"]
+                fx = float(cm[0, 0])
+                fy = float(cm[1, 1])
+                cx = float(cm[0, 2])
+                cy = float(cm[1, 2])
+                lines.append(
+                    f"fx={fx:.2f}  fy={fy:.2f}\ncx={cx:.2f}  cy={cy:.2f}"
+                )
+            if "dist_coeffs" in data:
+                dc = data["dist_coeffs"].flatten()
+                vals = "  ".join(f"{v:.4f}" for v in dc)
+                lines.append(f"dist: {vals}")
+            return "\n".join(lines) if lines else ""
+        except Exception:
+            return ""
 
     def _start_box_mode(self) -> None:
         """Activate box-detection mode."""

@@ -684,3 +684,149 @@ class TestRender3dScene:
         robot = RobotPose3D()
         img = render_3d_scene(150, 100, markers, robot)
         assert img.size == (150, 100)
+
+
+# ---------------------------------------------------------------------------
+# SlamView3D – minimum window size constants
+# ---------------------------------------------------------------------------
+
+
+class TestSlamView3DMinSize:
+    """SlamView3D must expose minimum-size constants for comfortable observation."""
+
+    def test_min_width_constant_exists(self):
+        from robo_vision.slam_view import _SLAM_VIEW_MIN_WIDTH
+        assert isinstance(_SLAM_VIEW_MIN_WIDTH, int)
+
+    def test_min_height_constant_exists(self):
+        from robo_vision.slam_view import _SLAM_VIEW_MIN_HEIGHT
+        assert isinstance(_SLAM_VIEW_MIN_HEIGHT, int)
+
+    def test_min_width_is_comfortable(self):
+        """Minimum width should be at least 400 px for comfortable observation."""
+        from robo_vision.slam_view import _SLAM_VIEW_MIN_WIDTH
+        assert _SLAM_VIEW_MIN_WIDTH >= 400
+
+    def test_min_height_is_comfortable(self):
+        """Minimum height should be at least 350 px for comfortable observation."""
+        from robo_vision.slam_view import _SLAM_VIEW_MIN_HEIGHT
+        assert _SLAM_VIEW_MIN_HEIGHT >= 350
+
+
+# ---------------------------------------------------------------------------
+# RoboEyeSenseApp._load_calib_file_info – calibration file loading
+# ---------------------------------------------------------------------------
+
+
+class TestLoadCalibFileInfo:
+    """_load_calib_file_info should parse .npz calibration files correctly."""
+
+    @pytest.fixture(autouse=True)
+    def _skip_no_tk(self):
+        pytest.importorskip("tkinter")
+
+    def test_returns_empty_string_for_missing_file(self, tmp_path):
+        from robo_vision.gui import RoboEyeSenseApp
+        result = RoboEyeSenseApp._load_calib_file_info(
+            str(tmp_path / "nonexistent.npz")
+        )
+        assert result == ""
+
+    def test_returns_empty_string_for_corrupt_file(self, tmp_path):
+        path = tmp_path / "bad.npz"
+        path.write_bytes(b"not a numpy file")
+        from robo_vision.gui import RoboEyeSenseApp
+        result = RoboEyeSenseApp._load_calib_file_info(str(path))
+        assert result == ""
+
+    def test_parses_camera_matrix(self, tmp_path):
+        path = tmp_path / "calib.npz"
+        cm = np.array([[800.0, 0.0, 320.0], [0.0, 800.0, 240.0], [0.0, 0.0, 1.0]])
+        dc = np.array([0.1, -0.2, 0.0, 0.0, 0.05])
+        np.savez(str(path), camera_matrix=cm, dist_coeffs=dc)
+
+        from robo_vision.gui import RoboEyeSenseApp
+        result = RoboEyeSenseApp._load_calib_file_info(str(path))
+
+        assert "800.00" in result
+        assert "320.00" in result
+        assert "240.00" in result
+
+    def test_parses_dist_coeffs(self, tmp_path):
+        path = tmp_path / "calib.npz"
+        cm = np.array([[600.0, 0.0, 200.0], [0.0, 600.0, 150.0], [0.0, 0.0, 1.0]])
+        dc = np.array([0.1234, -0.5678, 0.0001, 0.0002, 0.0300])
+        np.savez(str(path), camera_matrix=cm, dist_coeffs=dc)
+
+        from robo_vision.gui import RoboEyeSenseApp
+        result = RoboEyeSenseApp._load_calib_file_info(str(path))
+
+        assert "0.1234" in result
+        assert "-0.5678" in result
+
+    def test_handles_file_with_only_camera_matrix(self, tmp_path):
+        path = tmp_path / "calib_partial.npz"
+        cm = np.array([[500.0, 0.0, 160.0], [0.0, 500.0, 120.0], [0.0, 0.0, 1.0]])
+        np.savez(str(path), camera_matrix=cm)
+
+        from robo_vision.gui import RoboEyeSenseApp
+        result = RoboEyeSenseApp._load_calib_file_info(str(path))
+
+        assert "500.00" in result
+        assert "dist" not in result
+
+
+# ---------------------------------------------------------------------------
+# Calibration mode – existing file shown on startup  (requires display)
+# ---------------------------------------------------------------------------
+
+
+class TestCalibrationModeShowsExistingFile:
+    """_start_calibration_mode should display existing calibration values."""
+
+    pytestmark = _requires_display
+
+    @pytest.fixture
+    def app(self):
+        tk = pytest.importorskip("tkinter")
+        cam = MagicMock()
+        cam.actual_width = 640
+        cam.actual_height = 480
+        with patch(
+            "robo_vision.detector._apriltags_available",
+            return_value=False,
+        ):
+            from robo_vision.detector import RoboEyeDetector
+            detector = RoboEyeDetector(enable_qr=False, enable_laser=True)
+        root = tk.Tk()
+        root.withdraw()
+        from robo_vision.gui import RoboEyeSenseApp
+        app = RoboEyeSenseApp(root, cam, detector)
+        yield app
+        root.destroy()
+
+    def test_status_shows_existing_values(self, app, tmp_path):
+        """When a calibration file exists, its values appear in the status panel."""
+        path = tmp_path / "calib.npz"
+        cm = np.array([[700.0, 0.0, 350.0], [0.0, 700.0, 250.0], [0.0, 0.0, 1.0]])
+        dc = np.array([0.11, -0.22, 0.0, 0.0, 0.033])
+        np.savez(str(path), camera_matrix=cm, dist_coeffs=dc)
+
+        app._calib_output_var.set(str(path))
+        app._mode_var.set("Calibration")
+        app._on_mode_change()
+
+        status = app._calib_status_var.get()
+        assert "700.00" in status
+        assert "350.00" in status
+        assert "0.1100" in status
+
+    def test_status_no_existing_file(self, app, tmp_path):
+        """When no calibration file exists, the status should not mention existing."""
+        path = tmp_path / "nonexistent.npz"
+        app._calib_output_var.set(str(path))
+        app._mode_var.set("Calibration")
+        app._on_mode_change()
+
+        status = app._calib_status_var.get()
+        assert "Existing calibration" not in status
