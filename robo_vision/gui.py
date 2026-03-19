@@ -495,11 +495,16 @@ class RoboEyeSenseApp:
         ttk.Label(parent, text="Parameters").pack(anchor="w")
 
         # Laser threshold
-        ttk.Label(parent, text="Laser threshold min (0–255)").pack(
+        ttk.Label(parent, text="Laser threshold min (0–255)", 
+        font=("", 8, "italic")
+        ).pack(
             anchor="w", pady=(2, 0)
         )
+
         self._threshold_label = ttk.Label(
-            parent, text=str(self._laser_threshold.get())
+            parent, text=str(self._laser_threshold.get()), 
+        font=("", 8, "italic")
+        
         )
         self._threshold_label.pack(anchor="e")
         ttk.Scale(
@@ -512,11 +517,15 @@ class RoboEyeSenseApp:
         ).pack(fill="x")
 
         # Laser threshold max
-        ttk.Label(parent, text="Laser threshold max (0–255)").pack(
+        ttk.Label(parent, text="Laser threshold max (0–255)", 
+        font=("", 8, "italic")
+        ).pack(
             anchor="w", pady=(2, 0)
         )
         self._threshold_max_label = ttk.Label(
-            parent, text=str(self._laser_threshold_max.get())
+            parent, text=str(self._laser_threshold_max.get()), 
+        font=("", 8, "italic")
+        
         )
         self._threshold_max_label.pack(anchor="e")
         ttk.Scale(
@@ -529,11 +538,15 @@ class RoboEyeSenseApp:
         ).pack(fill="x")
 
         # Laser target area
-        ttk.Label(parent, text="Laser target area (px)").pack(
-            anchor="w", pady=(3, 0)
+        ttk.Label(parent, text="Laser target area (px)", 
+        font=("", 8, "italic")
+        ).pack(
+            anchor="w", pady=(6, 0)
         )
         self._target_area_label = ttk.Label(
-            parent, text=str(self._laser_target_area.get())
+            parent, text=str(self._laser_target_area.get()), 
+        font=("", 8, "italic")
+        
         )
         self._target_area_label.pack(anchor="e")
         ttk.Scale(
@@ -546,11 +559,15 @@ class RoboEyeSenseApp:
         ).pack(fill="x")
 
         # Laser sensitivity
-        ttk.Label(parent, text="Laser sensitivity (0–100)").pack(
-            anchor="w", pady=(3, 0)
+        ttk.Label(parent, text="Laser sensitivity (0–100)", 
+        font=("", 8, "italic")
+        ).pack(
+            anchor="w", pady=(6, 0)
         )
         self._sensitivity_label = ttk.Label(
-            parent, text=str(self._laser_sensitivity.get())
+            parent, text=str(self._laser_sensitivity.get()), 
+        font=("", 8, "italic")
+        
         )
         self._sensitivity_label.pack(anchor="e")
         ttk.Scale(
@@ -590,7 +607,7 @@ class RoboEyeSenseApp:
 
         # ── Recording ─────────────────────────────────────────────────────
         ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=3)
-        ttk.Label(parent, text="Recording", font=("", 9, "bold")).pack(anchor="w")
+        ttk.Label(parent, text="Recording", font=("", 8, "bold")).pack(anchor="w")
 
         self._record_btn = ttk.Button(
             parent,
@@ -609,7 +626,7 @@ class RoboEyeSenseApp:
 
         # ── Camera settings ───────────────────────────────────────────────
         ttk.Separator(parent, orient="horizontal").pack(fill="x", pady=3)
-        ttk.Label(parent, text="Camera settings", font=("", 9, "bold")).pack(
+        ttk.Label(parent, text="Camera settings", font=("", 10, "bold")).pack(
             anchor="w"
         )
 
@@ -705,7 +722,7 @@ class RoboEyeSenseApp:
 
     def _build_mode_panel(self, parent: ttk.Frame) -> None:
         """Build the right-side mode panel (mode selector + tabbed notebook)."""
-        ttk.Label(parent, text="MODE", font=("", 10, "bold")).pack(
+        ttk.Label(parent, text="MODE", font=("", 9, "bold")).pack(
             anchor="w", pady=(0, 4)
         )
 
