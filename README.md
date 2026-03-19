@@ -139,20 +139,15 @@ python main.py --mode slam --record slam_session.mp4
 python main.py --mode slam --calib-output calibration.npz --tag-size 0.05
 ```
 
-W trybie GUI (``--gui``) scenariusze Offset i SLAM dostępne są jako
-zakładki w panelu informacyjnym po prawej stronie. Zakładka **SLAM**
-wyświetla:
+W trybie GUI (``--gui``) scenariusze Offset i SLAM dostępne są jako zakładki w panelu informacyjnym po prawej stronie. Zakładka **SLAM** wyświetla:
 
 - **Pozycję i orientację robota** (6-DoF) w czasie rzeczywistym.
-- **Listę wykrytych markerów** z ich pozycjami, orientacjami oraz liczbą
-  obserwacji.
-- **Wizualizację 3-D** zrekonstruowanej przestrzeni (widok z góry) wraz
-  z pozycją kamery.
+- **Listę wykrytych markerów** z ich pozycjami, orientacjami oraz liczbą   obserwacji.
+- **Wizualizację 3-D** zrekonstruowanej przestrzeni (widok z góry) wraz   z pozycją kamery.
 
 #### Tryb kalibracji kamery (calibration)
 
-Tryb *calibration* pozwala wyznaczyć parametry wewnętrzne kamery
-(macierz kamery, współczynniki dystorsji) na podstawie wzorca szachownicy.
+Tryb *calibration* pozwala wyznaczyć parametry wewnętrzne kamery (macierz kamery, współczynniki dystorsji) na podstawie wzorcu szachownicy.
 
 ```bash
 # Domyślna szachownica 9×6, zapis do calibration.npz
@@ -165,9 +160,7 @@ python main.py --mode calibration --chessboard-size 7x5 --calib-output my_calib.
 python main.py --mode calibration --source calibration_video.mp4
 ```
 
-W trybie kalibracji naciśnij **spację**, aby przechwycić klatkę z wykrytym
-wzorcem. Program wymaga 15–25 poprawnych ujęć, po czym automatycznie
-oblicza parametry kamery i zapisuje je do pliku `.npz`.
+W trybie kalibracji naciśnij **spację**, aby przechwycić klatkę z wykrytym wzorcem. Program wymaga 15–25 poprawnych ujęć, po czym automatycznie oblicza parametry kamery i zapisuje je do pliku `.npz`.
 
 #### Tryb detekcji pudełek (box)
 
@@ -253,7 +246,7 @@ Przy każdym uruchomieniu program wyświetla podsumowanie aktywnej
 konfiguracji w terminalu:
 
 ```
-robo-vision 0.4.0
+robo-vision 0.6.0
 Display mode      : display
 Detection mode    : normal
 Detectors enabled : AprilTag
@@ -262,9 +255,7 @@ Camera opened     : 640x480 @ 30.0 FPS
 Starting detection loop...
 ```
 
-Podsumowanie obejmuje tryb wyświetlania, tryb detekcji, listę włączonych
-detektorów, źródło wideo, aktywny scenariusz (jeśli ustawiony) oraz
-ścieżkę nagrywania (jeśli aktywna).
+Podsumowanie obejmuje tryb wyświetlania, tryb detekcji, listę włączonych detektorów, źródło wideo, aktywny scenariusz (jeśli ustawiony) oraz ścieżkę nagrywania (jeśli aktywna).
 
 ---
 
