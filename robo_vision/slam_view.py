@@ -24,6 +24,11 @@ from typing import List, Optional
 
 logger = logging.getLogger("robo_vision.slam_view")
 
+# Minimum window dimensions (pixels) for the 3-D SLAM preview window.
+# These ensure the viewer can comfortably observe the map at all times.
+_SLAM_VIEW_MIN_WIDTH: int = 500
+_SLAM_VIEW_MIN_HEIGHT: int = 420
+
 
 def _matplotlib_available() -> bool:
     """Return ``True`` if matplotlib is importable."""
@@ -88,6 +93,14 @@ class SlamView3D:
             self._ax.set_zlabel("Z (cm)")
             self._ax.set_title("SLAM Map")
             self._fig.tight_layout()
+
+            # Enforce a comfortable minimum window size.
+            try:
+                mgr = self._fig.canvas.manager
+                mgr.window.wm_minsize(_SLAM_VIEW_MIN_WIDTH, _SLAM_VIEW_MIN_HEIGHT)
+            except Exception:
+                pass  # non-Tk backend or headless – silently ignored
+
             self._initialized = True
             logger.info("SLAM 3D view initialized.")
             return True
