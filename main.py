@@ -57,6 +57,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import logging
 import os
 import sys
 import time
@@ -74,6 +75,8 @@ _QUALITY_TO_DETECTION_MODE: dict[str, DetectionMode] = {
     "normal": DetectionMode.NORMAL,
     "high": DetectionMode.ROBUST,
 }
+
+logger = logging.getLogger("robo_vision")
 
 # Ordered list of operating mode names (index+1 maps to mode name).
 _MODES = ["basic", "offset", "slam", "calibration", "box", "pose", "follow"]
@@ -286,10 +289,9 @@ def _parse_tag_names(raw: list[str] | None) -> dict[str, str]:
     mapping: dict[str, str] = {}
     for item in raw:
         if "=" not in item:
-            print(
-                f"WARNING: ignoring invalid --tag-names entry {item!r} "
-                "(expected ID=NAME format)",
-                file=sys.stderr,
+            logger.warning(
+                "ignoring invalid --tag-names entry %r "
+                "(expected ID=NAME format)", item,
             )
             continue
         tag_id, name = item.split("=", 1)
@@ -321,20 +323,42 @@ def _enabled_detectors_label(args: argparse.Namespace) -> str:
 def main(argv: list[str] | None = None) -> int:  # noqa: C901
     args = _parse_args(argv)
 
-    print(f"{APP_NAME} {__version__}")
+    # ── Logging setup: INFO→stdout, WARNING+→stderr ───────────────────
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    for h in root.handlers[:]:
+        root.removeHandler(h)
+
+    _fmt = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    _h_out = logging.StreamHandler(sys.stdout)
+    _h_out.setLevel(logging.DEBUG)
+    _h_out.addFilter(lambda r: r.levelno < logging.WARNING)
+    _h_out.setFormatter(_fmt)
+    root.addHandler(_h_out)
+
+    _h_err = logging.StreamHandler(sys.stderr)
+    _h_err.setLevel(logging.WARNING)
+    _h_err.setFormatter(_fmt)
+    root.addHandler(_h_err)
+
+    logger.info("%s %s", APP_NAME, __version__)
 
     mode = _QUALITY_TO_DETECTION_MODE[args.quality]
 
     # ── Startup configuration summary ─────────────────────────────────
     display_label = _display_mode_label(args)
-    print(f"Display mode      : {display_label}")
-    print(f"Quality           : {args.quality}")
-    print(f"Detectors enabled : {_enabled_detectors_label(args)}")
-    print(f"Source            : {args.source}")
+    logger.info("Display mode      : %s", display_label)
+    logger.info("Quality           : %s", args.quality)
+    logger.info("Detectors enabled : %s", _enabled_detectors_label(args))
+    logger.info("Source            : %s", args.source)
     if args.mode and args.mode != "basic":
-        print(f"Scenario          : {args.mode}")
+        logger.info("Scenario          : %s", args.mode)
     if args.record:
-        print(f"Record to         : {args.record}")
+        logger.info("Record to         : %s", args.record)
 
     tag_names = _parse_tag_names(args.tag_names)
 
@@ -347,15 +371,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                 file_names = load_tag_names_from_file(args.tag_names_file)
                 tag_names.update(file_names)
             except (json.JSONDecodeError, TypeError, OSError) as exc:
-                print(
-                    f"WARNING: could not load tag names from "
-                    f"{args.tag_names_file!r}: {exc}",
-                    file=sys.stderr,
+                logger.warning(
+                    "could not load tag names from %r: %s",
+                    args.tag_names_file, exc,
                 )
         else:
-            print(
-                f"WARNING: tag names file not found: {args.tag_names_file!r}",
-                file=sys.stderr,
+            logger.warning(
+                "tag names file not found: %r", args.tag_names_file,
             )
 
     # ── Guide mode ────────────────────────────────────────────────────
@@ -392,12 +414,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     try:
         cam = Camera(source=source, width=args.width, height=args.height)
     except RuntimeError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        logger.error("%s", exc)
         return 1
 
-    print(
-        f"Camera opened     : {cam.actual_width}x{cam.actual_height} "
-        f"@ {cam.actual_fps:.1f} FPS"
+    logger.info(
+        "Camera opened     : %dx%d @ %.1f FPS",
+        cam.actual_width, cam.actual_height, cam.actual_fps,
     )
 
     # ── Info mode ─────────────────────────────────────────────────────
@@ -434,33 +456,33 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
             with cam:
                 if recorder is not None:
                     recorder.start()
-                    print(f"Recording to {args.record}")
+                    logger.info("Recording to %s", args.record)
 
-                print("Starting offset scenario...")
+                logger.info("Starting offset scenario...")
 
                 if args.headless:
                     # Headless scenario: capture reference immediately,
                     # then compute offset on next frame and exit.
                     # Type "ref" on stdin to re-capture the reference, or
                     # "quit" to exit.
-                    print("Capturing reference frame...")
+                    logger.info("Capturing reference frame...")
                     ref = scenario.capture_reference()
                     april_ref = [
                         d
                         for d in ref
                         if d.detection_type == DetectionType.APRIL_TAG
                     ]
-                    print(
-                        f"Reference captured: {len(april_ref)} AprilTag(s) detected."
+                    logger.info(
+                        "Reference captured: %d AprilTag(s) detected.",
+                        len(april_ref),
                     )
                     if not april_ref:
-                        print(
-                            "WARNING: no AprilTags found in reference frame. "
+                        logger.warning(
+                            "no AprilTags found in reference frame. "
                             "The offset will be (0, 0).",
-                            file=sys.stderr,
                         )
 
-                    print("Capturing current frame and computing offset...")
+                    logger.info("Capturing current frame and computing offset...")
                     result = scenario.compute_current_offset()
 
                     print(f"\n{'='*50}")
@@ -514,19 +536,20 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                             if cmd in ("quit", "q", "exit"):
                                 break
                             elif cmd == "ref":
-                                print("Capturing new reference frame...")
+                                logger.info("Capturing new reference frame...")
                                 ref = scenario.capture_reference()
                                 april_ref = [
                                     d
                                     for d in ref
                                     if d.detection_type == DetectionType.APRIL_TAG
                                 ]
-                                print(
-                                    f"New reference captured: "
-                                    f"{len(april_ref)} AprilTag(s) detected."
+                                logger.info(
+                                    "New reference captured: "
+                                    "%d AprilTag(s) detected.",
+                                    len(april_ref),
                                 )
                             elif cmd == "offset":
-                                print("Computing offset...")
+                                logger.info("Computing offset...")
                                 result = scenario.compute_current_offset()
                                 dx, dy = result.offset
                                 print(f"Matched: {result.matched_tags}  "
@@ -538,33 +561,33 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                         # other environments that don't support fileno().
                         pass
 
-                    print("Offset scenario finished.")
+                    logger.info("Offset scenario finished.")
                 else:
                     input(
                         "Place the camera at the REFERENCE position with AprilTags "
                         "visible, then press Enter…"
                     )
-                    print("Capturing reference frame...")
+                    logger.info("Capturing reference frame...")
                     ref = scenario.capture_reference()
                     april_ref = [
                         d
                         for d in ref
                         if d.detection_type == DetectionType.APRIL_TAG
                     ]
-                    print(
-                        f"Reference captured: {len(april_ref)} AprilTag(s) detected."
+                    logger.info(
+                        "Reference captured: %d AprilTag(s) detected.",
+                        len(april_ref),
                     )
                     if not april_ref:
-                        print(
-                            "WARNING: no AprilTags found in reference frame. "
+                        logger.warning(
+                            "no AprilTags found in reference frame. "
                             "The offset will be (0, 0).",
-                            file=sys.stderr,
                         )
 
                     input(
                         "Move the camera to the NEW position, then press Enter…"
                     )
-                    print("Capturing current frame and computing offset...")
+                    logger.info("Capturing current frame and computing offset...")
                     result = scenario.compute_current_offset()
 
                     print(f"\n{'='*50}")
@@ -580,14 +603,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                         ):
                             print(f"  tag {tag_id:>4s}: ({tdx:+.1f}, {tdy:+.1f}) px")
                     print(f"{'='*50}")
-                    print("Offset scenario finished.")
+                    logger.info("Offset scenario finished.")
         except RuntimeError as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
+            logger.error("%s", exc)
             return 1
         finally:
             if recorder is not None:
                 recorder.stop()
-                print(f"Recording saved to {args.record}")
+                logger.info("Recording saved to %s", args.record)
         return 0
 
     # ── SLAM scenario mode ────────────────────────────────────────────────
@@ -605,12 +628,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                     import numpy as _np
                     _cal = _np.load(args.calib_output)
                     camera_matrix = _cal["camera_matrix"].tolist()
-                    print(f"Calibration loaded : {args.calib_output}")
+                    logger.info("Calibration loaded : %s", args.calib_output)
                 except (OSError, KeyError) as _exc:
-                    print(
-                        f"WARNING: could not load calibration from "
-                        f"{args.calib_output!r}: {_exc}",
-                        file=sys.stderr,
+                    logger.warning(
+                        "could not load calibration from %r: %s",
+                        args.calib_output, _exc,
                     )
 
         calibrator = SlamCalibrator(
@@ -634,9 +656,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
             with cam:
                 if recorder is not None:
                     recorder.start()
-                    print(f"Recording to {args.record}")
+                    logger.info("Recording to %s", args.record)
 
-                print("Starting SLAM calibration...")
+                logger.info("Starting SLAM calibration...")
                 print("Scanning for AprilTag markers. Press q to stop (display mode).")
 
                 frame_idx = 0
@@ -733,7 +755,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                         if cv2.waitKey(1) & 0xFF == ord("q"):
                             break
 
-                print("Stream ended.")
+                logger.info("Stream ended.")
 
                 # Save marker map
                 mmap = calibrator.marker_map
@@ -762,12 +784,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                 print(f"Map saved to      : {map_path}")
                 print(f"{'='*50}")
         except RuntimeError as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
+            logger.error("%s", exc)
             return 1
         finally:
             if recorder is not None:
                 recorder.stop()
-                print(f"Recording saved to {args.record}")
+                logger.info("Recording saved to %s", args.record)
             if not args.headless:
                 cv2.destroyAllWindows()
         return 0
@@ -780,10 +802,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
             try:
                 cols, rows = (int(x) for x in args.chessboard_size.split("x"))
             except ValueError:
-                print(
-                    f"ERROR: invalid --chessboard-size {args.chessboard_size!r} "
-                    f"(expected COLSxROWS, e.g. '9x6')",
-                    file=sys.stderr,
+                logger.error(
+                    "invalid --chessboard-size %r "
+                    "(expected COLSxROWS, e.g. '9x6')",
+                    args.chessboard_size,
                 )
                 return 1
             active_mode = CalibrationMode(
@@ -822,7 +844,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         t_fps = time.perf_counter()
         frame_idx = 0
 
-        print(f"Starting {args.mode} mode...")
+        logger.info("Starting %s mode...", args.mode)
         if not args.headless:
             print("Press q in the display window to quit.")
 
@@ -830,7 +852,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
             with cam:
                 if recorder is not None:
                     recorder.start()
-                    print(f"Recording to {args.record}")
+                    logger.info("Recording to %s", args.record)
 
                 while True:
                     frame = cam.read()
@@ -869,14 +891,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                     if recorder is not None:
                         recorder.write_frame(vis)
 
-                print(f"Stream ended. Total frames: {frame_idx}")
+                logger.info("Stream ended. Total frames: %d", frame_idx)
         except RuntimeError as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
+            logger.error("%s", exc)
             return 1
         finally:
             if recorder is not None:
                 recorder.stop()
-                print(f"Recording saved to {args.record}")
+                logger.info("Recording saved to %s", args.record)
             if not args.headless:
                 cv2.destroyAllWindows()
         return 0
@@ -886,15 +908,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         try:
             import tkinter as tk
         except ImportError:  # pragma: no cover
-            print(
-                "ERROR: tkinter is not available. "
+            logger.error(
+                "tkinter is not available. "
                 "Install it (e.g. sudo apt install python3-tk) to use --gui.",
-                file=sys.stderr,
             )
             return 1
         from robo_vision.gui import RoboEyeSenseApp
 
-        print("Launching GUI...")
+        logger.info("Launching GUI...")
         root = tk.Tk()
         with cam:
             app = RoboEyeSenseApp(
@@ -921,7 +942,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     t_fps = time.perf_counter()
     frame_total = 0
 
-    print("Starting detection loop...")
+    logger.info("Starting detection loop...")
     if not args.headless:
         print("Press q in the display window to quit.")
 
@@ -929,7 +950,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         with cam:
             if recorder is not None:
                 recorder.start()
-                print(f"Recording to {args.record}")
+                logger.info("Recording to %s", args.record)
 
             while True:
                 frame = cam.read()
@@ -978,11 +999,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
 
-            print(f"Stream ended. Total frames processed: {frame_total}")
+            logger.info("Stream ended. Total frames processed: %d", frame_total)
     finally:
         if recorder is not None:
             recorder.stop()
-            print(f"Recording saved to {args.record}")
+            logger.info("Recording saved to %s", args.record)
         if not args.headless:
             cv2.destroyAllWindows()
 
