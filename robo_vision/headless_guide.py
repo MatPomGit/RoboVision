@@ -153,20 +153,41 @@ def discover_cameras(max_index: int = 5) -> List[Dict[str, Any]]:
     import cv2  # type: ignore[import-untyped]
 
     cameras: List[Dict[str, Any]] = []
-    for idx in range(max_index):
-        cap = cv2.VideoCapture(idx)
-        if cap.isOpened():
-            entry: Dict[str, Any] = {
-                "index": idx,
-                "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-                "fps": cap.get(cv2.CAP_PROP_FPS),
-                "backend": cap.getBackendName(),
-            }
-            cap.release()
-            cameras.append(entry)
-        else:
-            cap.release()
+
+    # Suppress OpenCV's verbose error/warning messages while probing camera
+    # indices that may not be available on this system.
+    try:
+        _orig_log_level = cv2.getLogLevel()
+        cv2.setLogLevel(0)  # 0 = LOG_LEVEL_SILENT
+    except AttributeError:
+        _orig_log_level = None
+
+    try:
+        for idx in range(max_index):
+            cap = None
+            try:
+                cap = cv2.VideoCapture(idx)
+                if cap.isOpened():
+                    entry: Dict[str, Any] = {
+                        "index": idx,
+                        "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                        "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                        "fps": cap.get(cv2.CAP_PROP_FPS),
+                        "backend": cap.getBackendName(),
+                    }
+                    cameras.append(entry)
+            except Exception:  # noqa: BLE001 – cv2.error or backend errors
+                pass
+            finally:
+                if cap is not None:
+                    cap.release()
+    finally:
+        if _orig_log_level is not None:
+            try:
+                cv2.setLogLevel(_orig_log_level)
+            except AttributeError:
+                pass
+
     return cameras
 
 
