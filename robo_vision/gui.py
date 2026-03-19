@@ -346,7 +346,7 @@ class RoboEyeSenseApp:
         # Left control panel (spans both content rows)
         self._ctrl_frame = ttk.Frame(self.root, padding=8, width=200)
         self._ctrl_frame.grid(row=0, column=0, rowspan=2, sticky="nsew")
-        self._ctrl_frame.grid_propagate(False)
+        self._ctrl_frame.pack_propagate(False)
 
         # Scrollable wrapper for control panel contents
         ctrl_canvas = tk.Canvas(self._ctrl_frame, highlightthickness=0)
@@ -359,7 +359,11 @@ class RoboEyeSenseApp:
             "<Configure>",
             lambda _e: ctrl_canvas.configure(scrollregion=ctrl_canvas.bbox("all")),
         )
-        ctrl_canvas.create_window((0, 0), window=inner_frame, anchor="nw")
+        _ctrl_inner_win = ctrl_canvas.create_window((0, 0), window=inner_frame, anchor="nw")
+        ctrl_canvas.bind(
+            "<Configure>",
+            lambda e: ctrl_canvas.itemconfig(_ctrl_inner_win, width=e.width),
+        )
         ctrl_canvas.configure(yscrollcommand=ctrl_scrollbar.set)
 
         ctrl_canvas.pack(side="left", fill="both", expand=True)
@@ -382,7 +386,7 @@ class RoboEyeSenseApp:
         # Right mode panel — full right column (col=2, rowspan=2)
         self._mode_frame = ttk.Frame(self.root, padding=8, width=280)
         self._mode_frame.grid(row=0, column=2, rowspan=2, sticky="nsew")
-        self._mode_frame.grid_propagate(False)
+        self._mode_frame.pack_propagate(False)
 
         self._build_controls(inner_frame)
         self._build_info_panel(self._info_frame)
@@ -578,6 +582,7 @@ class RoboEyeSenseApp:
             parent,
             textvariable=self._record_status_var,
             font=("", 8, "italic"),
+            wraplength=180,
         ).pack(anchor="w")
 
         # ── Layout toggle ─────────────────────────────────────────────────

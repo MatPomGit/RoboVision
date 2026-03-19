@@ -462,6 +462,29 @@ class TestRoboEyeSenseApp:
         app._on_close()
         assert app._recorder is None
 
+    def test_ctrl_frame_width_stable_when_recording(self, app, tmp_path):
+        """Control panel width must not change when recording is toggled."""
+        app.root.deiconify()
+        app.root.update()
+        width_before = app._ctrl_frame.winfo_width()
+        path = str(tmp_path / "width_test.mp4")
+        app._record_path = path
+        app._start_recording()
+        app.root.update()
+        width_during = app._ctrl_frame.winfo_width()
+        app._stop_recording()
+        app.root.update()
+        width_after = app._ctrl_frame.winfo_width()
+        assert width_during == width_before, (
+            f"Control panel width changed from {width_before} to {width_during} "
+            "when recording started"
+        )
+        assert width_after == width_before, (
+            f"Control panel width changed from {width_before} to {width_after} "
+            "after recording stopped"
+        )
+        app.root.withdraw()
+
     # ── SLAM callbacks ────────────────────────────────────────────────────
 
     def test_slam_initially_inactive(self, app):
