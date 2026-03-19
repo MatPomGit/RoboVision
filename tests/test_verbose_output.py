@@ -371,3 +371,99 @@ class TestRecordingMessages:
         out = capsys.readouterr().out
         assert "Recording to" in out
         assert "Recording saved to" in out
+
+
+# ---------------------------------------------------------------------------
+# Improved SLAM headless output
+# ---------------------------------------------------------------------------
+
+
+class TestSlamHeadlessImprovedOutput:
+    """SLAM headless output should include FPS, tag_size, and map= key."""
+
+    def test_slam_headless_prints_fps(self, capsys, tmp_path):
+        video = tmp_path / "black.mp4"
+        _make_dummy_video(video, num_frames=2)
+
+        with patch(
+            "robo_eye_sense.april_tag_detector._apriltags_available",
+            return_value=False,
+        ):
+            from main import main
+
+            rc = main([
+                "--source", str(video), "--headless",
+                "--mode", "slam",
+                "--map-file", str(tmp_path / "map.json"),
+            ])
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "FPS:" in out
+
+    def test_slam_headless_prints_map_size(self, capsys, tmp_path):
+        video = tmp_path / "black.mp4"
+        _make_dummy_video(video, num_frames=2)
+
+        with patch(
+            "robo_eye_sense.april_tag_detector._apriltags_available",
+            return_value=False,
+        ):
+            from main import main
+
+            rc = main([
+                "--source", str(video), "--headless",
+                "--mode", "slam",
+                "--map-file", str(tmp_path / "map.json"),
+            ])
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "map=" in out
+
+    def test_slam_headless_prints_tag_size_in_summary(self, capsys, tmp_path):
+        video = tmp_path / "black.mp4"
+        _make_dummy_video(video, num_frames=2)
+
+        with patch(
+            "robo_eye_sense.april_tag_detector._apriltags_available",
+            return_value=False,
+        ):
+            from main import main
+
+            rc = main([
+                "--source", str(video), "--headless",
+                "--mode", "slam",
+                "--tag-size", "0.08",
+                "--map-file", str(tmp_path / "map.json"),
+            ])
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        # Tag size 0.08 m = 8.0 cm; verify the summary mentions it
+        assert "Tag size" in out
+        assert "8.0" in out
+
+
+# ---------------------------------------------------------------------------
+# Headless basic loop – FPS on detection lines
+# ---------------------------------------------------------------------------
+
+
+class TestHeadlessDetectionFPS:
+    """Each frame line in headless mode should include FPS."""
+
+    def test_fps_shown_for_no_detections_frame(self, capsys, tmp_path):
+        video = tmp_path / "black.mp4"
+        _make_dummy_video(video, num_frames=1)
+
+        with patch(
+            "robo_eye_sense.april_tag_detector._apriltags_available",
+            return_value=False,
+        ):
+            from main import main
+
+            main(["--source", str(video), "--headless"])
+
+        out = capsys.readouterr().out
+        assert "FPS:" in out

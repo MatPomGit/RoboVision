@@ -97,48 +97,51 @@ Jeśli brakuje tkinter, zainstaluj go (np. `sudo apt install python3-tk`).
 
 ```bash
 # Balanced default
-python main.py --mode normal
+python main.py --quality normal
 
 # Faster on weaker hardware
-python main.py --mode fast
+python main.py --quality low
 
 # More robust for motion blur / rapid movement
-python main.py --mode robust
+python main.py --quality high
 ```
 
 #### Przykład: profil zorientowany na szybkość
 
 ```bash
-python main.py --mode fast --no-apriltag --width 320 --height 240
+python main.py --quality low --no-apriltag --width 320 --height 240
 ```
 
 #### Scenariusz Offset (kalibracja przesunięcia kamery)
 
 ```bash
 # Interaktywny – ręczne ustawienie odniesienia, przesunięcie, obliczenie wektora
-python main.py --scenario offset
+python main.py --mode offset
 
 # Bezgłowy – automatyczne przechwycenie i obliczenie
-python main.py --scenario offset --headless
+python main.py --mode offset --headless
 
 # Z nagrywaniem
-python main.py --scenario offset --record offset_session.mp4
+python main.py --mode offset --record offset_session.mp4
 ```
 
 #### Scenariusz SLAM (budowanie mapy markerów)
 
 ```bash
 # Interaktywny – okno OpenCV z nakładką SLAM
-python main.py --scenario slam
+python main.py --mode slam
 
 # Bezgłowy – tylko logi pozycji robota w stdout
-python main.py --scenario slam --headless
+python main.py --mode slam --headless
 
 # Zapis mapy do niestandardowego pliku
-python main.py --scenario slam --map-file my_map.json
+python main.py --mode slam --map-file my_map.json
 
 # Z nagrywaniem
-python main.py --scenario slam --record slam_session.mp4
+python main.py --mode slam --record slam_session.mp4
+
+# Z plikiem kalibracji kamery (lepsza dokładność SLAM)
+python main.py --mode slam --calib-output calibration.npz --tag-size 0.05
 ```
 
 W trybie GUI (``--gui``) scenariusze Offset i SLAM dostępne są jako
@@ -205,16 +208,60 @@ wraz z ich wartościami domyślnymi i opisem.
 | `--source INDEX\|PATH` | `0` | Indeks kamery (0, 1, …) lub ścieżka do pliku/strumienia wideo. |
 | `--width W` | `640` | Szerokość klatki w pikselach. |
 | `--height H` | `480` | Wysokość klatki w pikselach. |
-| `--mode normal\|fast\|robust` | `normal` | Tryb detekcji: *normal* – zrównoważony; *fast* – 50% rozdzielczości; *robust* – wyostrzanie + Kalman. |
+| `--quality low\|normal\|high` | `normal` | Jakość detekcji: *low* – 50% rozdzielczości (szybkie); *normal* – zrównoważony; *high* – wyostrzanie + Kalman (odporny). |
+| `--mode basic\|offset\|slam\|calibration\|box\|pose\|follow` | `basic` | Tryb pracy: *basic* – standardowa pętla detekcji; *offset* – kalibracja przesunięcia kamery; *slam* – budowanie mapy markerów; *calibration* – kalibracja intrinsik kamery; *box* – detekcja pudełek; *pose* – estymacja pozy 6-DoF tagów; *follow* – śledzenie markera z generowaniem sygnałów sterowania. |
 | `--no-apriltag` | *(włączony)* | Wyłącza detekcję AprilTag. |
 | `--qr` | *(wyłączony)* | Włącza detekcję kodów QR. |
 | `--laser` | *(wyłączony)* | Włącza detekcję punktu lasera. |
-| `--laser-threshold 0–255` | `240` | Próg jasności dla detekcji lasera. |
+| `--laser-threshold 0–255` | `240` | Dolny próg jasności dla detekcji lasera. |
+| `--laser-threshold-max 0–255` | `255` | Górny próg jasności dla detekcji lasera (zakres min–max). |
+| `--laser-channels r\|g\|b\|rgb` | `rgb` | Kanały kolorów do analizy detekcji lasera (np. `r` – tylko czerwony). |
 | `--headless` | *(wył.)* | Praca bez okna wyświetlania – wynik na stdout. |
 | `--gui` | *(wył.)* | Uruchomienie pełnego GUI Tkinter (wymaga `python3-tk`). |
 | `--record FILE` | *(brak)* | Nagrywanie strumienia do pliku MP4. |
-| `--scenario offset\|slam` | *(brak)* | Uruchomienie scenariusza: *offset* – kalibracja przesunięcia; *slam* – budowanie mapy markerów. |
-| `--map-file FILE` | `marker_map.json` | Ścieżka do pliku JSON z mapą markerów (zapis/odczyt). |
+| `--map-file FILE` | `marker_map.json` | Ścieżka do pliku JSON z mapą markerów SLAM (zapis/odczyt). |
+| `--tag-size METRES` | `0.05` | Fizyczny rozmiar boku znacznika AprilTag w metrach (tryby slam/pose/follow). |
+| `--tag-names ID=NAME …` | *(brak)* | Nazwy czytelne dla człowieka dla ID tagów, np. `--tag-names 1=box 2=table`. |
+| `--follow-marker ID` | *(brak)* | W trybie *follow*: ID tagu AprilTag do śledzenia (domyślnie pierwszy widoczny). |
+| `--follow-box` | *(wył.)* | W trybie *follow*: cofnięcie do śledzenia pudełka gdy nie ma tagów. |
+| `--target-distance M` | `0.5` | Żądana odległość do celu w metrach (tryb follow). |
+| `--chessboard-size COLSxROWS` | `9x6` | Wymiary wewnętrznych narożników szachownicy kalibracyjnej. |
+| `--calib-output FILE` | `calibration.npz` | Plik NPZ z danymi kalibracji kamery (zapis/odczyt). |
+| `--info` | *(wył.)* | Wyświetla informacje o kamerze (rozdzielczość, FPS, backend) i kończy działanie. |
+
+### Parametry trybu headless
+
+W trybie `--headless` program nie otwiera żadnego okna graficznego i wypisuje
+wszystkie informacje na standardowe wyjście (stdout). Możesz używać
+dowolnego parametru z tabeli powyżej. Parametry szczególnie przydatne
+w trybie headless:
+
+| Parametr | Typowe użycie headless |
+|---|---|
+| `--source` | Wskaż plik wideo lub strumień (np. RTSP), bo kamera fizyczna może nie być dostępna. |
+| `--mode slam` | Budowanie mapy markerów – logi pozycji robota per klatka w stdout. |
+| `--mode offset` | Kalibracja przesunięcia – wyniki wypisywane po przetworzeniu. |
+| `--quality low` | Szybsze przetwarzanie na słabym sprzęcie wbudowanym. |
+| `--record FILE` | Zapis wideo nawet w trybie headless (bez podglądu). |
+| `--map-file FILE` | Zapis/wczytanie mapy SLAM do/z pliku JSON. |
+| `--calib-output FILE` | Użycie pliku kalibracji w trybie SLAM dla lepszej dokładności. |
+| `--tag-size METRES` | Dokładny rozmiar fizyczny tagu – wpływa na estymację odległości i SLAM. |
+| `--tag-names ID=NAME` | Czytelne etykiety w logach (np. `--tag-names 1=robot 2=goal`). |
+| `--no-apriltag` / `--qr` / `--laser` | Włączanie/wyłączanie detektorów stosownie do sceny. |
+
+Przykład kompleksowego uruchomienia headless (SLAM z nagrywaniem i kalibracją):
+
+```bash
+python main.py \
+  --headless \
+  --mode slam \
+  --source /dev/video0 \
+  --quality normal \
+  --tag-size 0.05 \
+  --calib-output calibration.npz \
+  --map-file my_map.json \
+  --record slam_session.mp4
+```
 
 ### Przykładowe konfiguracje
 
@@ -223,22 +270,22 @@ wraz z ich wartościami domyślnymi i opisem.
 python main.py
 
 # 2. Tryb szybki, detekcja lasera, niska rozdzielczość
-python main.py --mode fast --laser --width 320 --height 240
+python main.py --quality low --laser --width 320 --height 240
 
 # 3. Tryb robuśny, detekcja QR + AprilTag, nagrywanie
-python main.py --mode robust --qr --record session.mp4
+python main.py --quality high --qr --record session.mp4
 
 # 4. GUI ze wszystkimi detektorami
 python main.py --gui --qr --laser
 
 # 5. SLAM bezgłowy z plikiem wideo
-python main.py --scenario slam --source video.mp4 --headless --map-file map.json
+python main.py --mode slam --source video.mp4 --headless --map-file map.json
 
 # 6. Offset w trybie headless
-python main.py --scenario offset --headless
+python main.py --mode offset --headless
 
 # 7. Kamera USB #2, tryb robuśny, GUI
-python main.py --source 2 --mode robust --gui
+python main.py --source 2 --quality high --gui
 ```
 
 ---
@@ -293,8 +340,8 @@ RoboEyeDetector.process_frame(frame)
 | `--width 320 --height 240` | 640×480 | Mniejsza klatka → szybsze działanie wszystkich detektorów |
 | `--laser-threshold 250` | `240` | Wyższa wartość → mniej fałszywych alarmów od lamp |
 | `--no-apriltag` | *(włączony)* | Wyłączenie detektora AprilTag oszczędza czas przetwarzania |
-| `--mode fast` | `normal` | Skaluje wejście o 50% przed detekcją (~4× mniej pikseli) |
-| `--mode robust` | `normal` | Stosuje wyostrzanie unsharp-mask + śledzenie filtrem Kalmana |
+| `--quality low` | `normal` | Skaluje wejście o 50% przed detekcją (~4× mniej pikseli) |
+| `--quality high` | `normal` | Stosuje wyostrzanie unsharp-mask + śledzenie filtrem Kalmana |
 
 ---
 

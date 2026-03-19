@@ -36,6 +36,39 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .results import Detection, DetectionType
 
+
+# ---------------------------------------------------------------------------
+# Camera-matrix helpers (no cv2 dependency)
+# ---------------------------------------------------------------------------
+
+
+def _default_camera_matrix(
+    width: int,
+    height: int,
+    hfov_deg: float = 60.0,
+) -> List[List[float]]:
+    """Compute a default 3×3 camera intrinsic matrix.
+
+    Assumes a horizontal field of view of *hfov_deg* degrees and places
+    the principal point at the image centre.  This is a reasonable
+    first-order approximation for most web-cams and USB cameras.
+
+    Parameters
+    ----------
+    width, height:
+        Frame dimensions in pixels.
+    hfov_deg:
+        Horizontal field of view in degrees (default 60°).
+    """
+    fx = width / (2.0 * math.tan(math.radians(hfov_deg / 2.0)))
+    cx = width / 2.0
+    cy = height / 2.0
+    return [
+        [fx,  0.0, cx],
+        [0.0, fx,  cy],
+        [0.0, 0.0, 1.0],
+    ]
+
 # ---------------------------------------------------------------------------
 # Data structures (no cv2 dependency)
 # ---------------------------------------------------------------------------
@@ -356,12 +389,21 @@ class SlamCalibrator:
         tag_size_cm: float = 5.0,
         camera_matrix: Optional[Sequence[Sequence[float]]] = None,
         dist_coeffs: Optional[Sequence[float]] = None,
+        frame_size: Optional[Tuple[int, int]] = None,
     ) -> None:
         self._tag_size_cm = tag_size_cm
-        self._camera_matrix = camera_matrix
         self._dist_coeffs = dist_coeffs
         self._map = MarkerMap()
         self._frame_count: int = 0
+
+        # Resolve the camera matrix: explicit > computed from frame_size > None
+        if camera_matrix is not None:
+            self._camera_matrix: Optional[Sequence[Sequence[float]]] = camera_matrix
+        elif frame_size is not None:
+            w, h = frame_size
+            self._camera_matrix = _default_camera_matrix(w, h)
+        else:
+            self._camera_matrix = None
 
     # -- public API ---------------------------------------------------------
 
@@ -542,19 +584,13 @@ def _solve_marker_pose(
     img_pts = _np.array(corners[:4], dtype=_np.float64)
 
     if camera_matrix is None:
-        # Build a rough intrinsic matrix from image-point bounds
-        xs = img_pts[:, 0]
-        ys = img_pts[:, 1]
-        w = max(float(xs.max() - xs.min()), 100.0) * 10.0
-        h = max(float(ys.max() - ys.min()), 100.0) * 10.0
-        f = max(w, h)
-        cx = float(xs.mean())
-        cy = float(ys.mean())
-        camera_matrix = _np.array([
-            [f, 0, cx],
-            [0, f, cy],
-            [0, 0,  1],
-        ], dtype=_np.float64)
+        # Fall back to a standard camera matrix for a 640×480 sensor at 60° HFOV.
+        # The principal point (cx, cy) must be the *frame* centre, not the tag
+        # centroid.  Using the tag's bounding box as a proxy for focal length
+        # and principal point produces large errors; this fixed approximation
+        # is more reliable for typical USB cameras.
+        default = _default_camera_matrix(640, 480)
+        camera_matrix = _np.array(default, dtype=_np.float64)
 
     dist = _np.zeros(4, dtype=_np.float64)
 
