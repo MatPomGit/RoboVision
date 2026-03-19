@@ -21,6 +21,7 @@ from robo_eye_sense.marker_map import (
     RobotPose3D,
     SlamCalibrator,
     _angle_average,
+    _default_camera_matrix,
     _euler_to_rotation_matrix,
     _mean_angles,
     _rotation_matrix_to_euler,
@@ -493,3 +494,97 @@ class TestSlamCalibrator:
         sc.process_detections([det2])
         obs_after = sc.marker_map.get("1").observations
         assert obs_after > obs_before
+
+
+# ---------------------------------------------------------------------------
+# _default_camera_matrix
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultCameraMatrix:
+    def test_shape(self):
+        mtx = _default_camera_matrix(640, 480)
+        assert len(mtx) == 3
+        assert all(len(row) == 3 for row in mtx)
+
+    def test_principal_point_at_image_centre(self):
+        mtx = _default_camera_matrix(640, 480)
+        assert mtx[0][2] == pytest.approx(320.0)
+        assert mtx[1][2] == pytest.approx(240.0)
+
+    def test_focal_length_positive(self):
+        mtx = _default_camera_matrix(640, 480)
+        assert mtx[0][0] > 0
+        assert mtx[1][1] > 0
+
+    def test_focal_lengths_equal(self):
+        mtx = _default_camera_matrix(640, 480)
+        assert mtx[0][0] == pytest.approx(mtx[1][1])
+
+    def test_scales_with_width(self):
+        mtx_wide = _default_camera_matrix(1280, 720)
+        mtx_narrow = _default_camera_matrix(640, 480)
+        # Wider image → larger focal length (same HFOV)
+        assert mtx_wide[0][0] > mtx_narrow[0][0]
+
+
+# ---------------------------------------------------------------------------
+# SlamCalibrator – frame_size parameter
+# ---------------------------------------------------------------------------
+
+
+class TestSlamCalibratorFrameSize:
+    def test_frame_size_sets_camera_matrix(self):
+        """Passing frame_size should compute a non-None camera matrix."""
+        sc = SlamCalibrator(tag_size_cm=5.0, frame_size=(640, 480))
+        assert sc._camera_matrix is not None
+        assert len(sc._camera_matrix) == 3
+
+    def test_frame_size_ignored_when_matrix_given(self):
+        """Explicit camera_matrix takes priority over frame_size."""
+        explicit = [[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]
+        sc = SlamCalibrator(
+            tag_size_cm=5.0,
+            camera_matrix=explicit,
+            frame_size=(1280, 720),
+        )
+        assert sc._camera_matrix is explicit
+
+    def test_no_frame_size_camera_matrix_none(self):
+        """Without frame_size or camera_matrix, _camera_matrix is None."""
+        sc = SlamCalibrator(tag_size_cm=5.0)
+        assert sc._camera_matrix is None
+
+    def test_frame_size_produces_valid_detections(self):
+        """SlamCalibrator with frame_size should still process detections."""
+        sc = SlamCalibrator(tag_size_cm=5.0, frame_size=(640, 480))
+        dets = [_april("1", (320, 240), half_size=30)]
+        result = sc.process_detections(dets)
+        assert len(sc.marker_map) >= 1
+
+
+# ---------------------------------------------------------------------------
+# SlamCalibrator – tag_size_cm used correctly
+# ---------------------------------------------------------------------------
+
+
+class TestSlamCalibratorTagSize:
+    def test_tag_size_stored(self):
+        sc = SlamCalibrator(tag_size_cm=10.0)
+        assert sc._tag_size_cm == 10.0
+
+    def test_different_tag_sizes_produce_different_poses(self):
+        """Larger physical tag at same apparent size → greater estimated depth."""
+        dets = [_april("1", (320, 240), half_size=30)]
+
+        sc_small = SlamCalibrator(tag_size_cm=2.5, frame_size=(640, 480))
+        sc_large = SlamCalibrator(tag_size_cm=10.0, frame_size=(640, 480))
+
+        sc_small.process_detections(dets)
+        sc_large.process_detections(dets)
+
+        pos_small = sc_small.marker_map.get("1").position
+        pos_large = sc_large.marker_map.get("1").position
+
+        # Depth (z) should be larger for the physically larger tag
+        assert pos_large[2] > pos_small[2]

@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import os
 import sys
 import time
 
@@ -520,7 +521,30 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     if args.mode == "slam":
         from robo_eye_sense.marker_map import SlamCalibrator
 
-        calibrator = SlamCalibrator(tag_size_cm=5.0)
+        # Convert tag size from metres (CLI default) to centimetres
+        tag_size_cm = args.tag_size * 100.0
+
+        # Optionally load camera calibration from a .npz file
+        camera_matrix = None
+        if args.calib_output:
+            if os.path.isfile(args.calib_output):
+                try:
+                    import numpy as _np
+                    _cal = _np.load(args.calib_output)
+                    camera_matrix = _cal["camera_matrix"].tolist()
+                    print(f"Calibration loaded : {args.calib_output}")
+                except (OSError, KeyError) as _exc:
+                    print(
+                        f"WARNING: could not load calibration from "
+                        f"{args.calib_output!r}: {_exc}",
+                        file=sys.stderr,
+                    )
+
+        calibrator = SlamCalibrator(
+            tag_size_cm=tag_size_cm,
+            camera_matrix=camera_matrix,
+            frame_size=(cam.actual_width, cam.actual_height),
+        )
 
         recorder = None
         if args.record:
@@ -543,29 +567,73 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                 print("Scanning for AprilTag markers. Press q to stop (display mode).")
 
                 frame_idx = 0
+                fps_counter = 0
+                fps_display = 0.0
+                t_fps = time.perf_counter()
+
                 while True:
                     frame = cam.read()
                     if frame is None:
                         break
 
+                    map_size_before = len(calibrator.marker_map)
                     detections = detector.process_frame(frame)
                     robot_pose = calibrator.process_detections(detections)
                     frame_idx += 1
 
+                    # FPS calculation
+                    fps_counter += 1
+                    t_now = time.perf_counter()
+                    elapsed = t_now - t_fps
+                    if elapsed >= 1.0:
+                        fps_display = fps_counter / elapsed
+                        fps_counter = 0
+                        t_fps = t_now
+
+                    new_markers = len(calibrator.marker_map) - map_size_before
+
                     if args.headless:
                         if robot_pose.visible_markers > 0:
                             rx, ry, rz = robot_pose.position
+                            roll, pitch, yaw = robot_pose.orientation
+                            err_str = (
+                                f"  reproj_err={robot_pose.reprojection_error:.2f}px"
+                                if robot_pose.reprojection_error is not None
+                                else ""
+                            )
+                            new_str = (
+                                f"  +{new_markers} new"
+                                if new_markers > 0
+                                else ""
+                            )
+                            # Collect visible marker IDs
+                            vis_ids = sorted({
+                                d.identifier
+                                for d in detections
+                                if d.identifier is not None
+                            })
+                            ids_str = (
+                                f"  ids=[{', '.join(vis_ids)}]"
+                                if vis_ids
+                                else ""
+                            )
                             print(
                                 f"[frame {frame_idx}] "
                                 f"robot=({rx:+.1f}, {ry:+.1f}, {rz:+.1f}) cm  "
-                                f"markers_in_map={len(calibrator.marker_map)}  "
+                                f"yaw={yaw:+.1f}°  "
+                                f"map={len(calibrator.marker_map)}"
+                                f"{new_str}  "
                                 f"visible={robot_pose.visible_markers}"
+                                f"{ids_str}"
+                                f"{err_str}  "
+                                f"FPS: {fps_display:.1f}"
                             )
                         else:
                             print(
                                 f"[frame {frame_idx}] "
                                 f"No markers visible  "
-                                f"markers_in_map={len(calibrator.marker_map)}"
+                                f"map={len(calibrator.marker_map)}  "
+                                f"FPS: {fps_display:.1f}"
                             )
                         if recorder is not None:
                             vis = detector.draw_detections(frame.copy(), detections)
@@ -574,9 +642,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                         vis = detector.draw_detections(frame.copy(), detections)
                         # Overlay SLAM info
                         rx, ry, rz = robot_pose.position
+                        roll, pitch, yaw = robot_pose.orientation
                         info = (
                             f"SLAM: map={len(calibrator.marker_map)} tags  "
-                            f"robot=({rx:+.1f},{ry:+.1f},{rz:+.1f})"
+                            f"robot=({rx:+.1f},{ry:+.1f},{rz:+.1f}) cm  "
+                            f"yaw={yaw:+.1f}°  "
+                            f"FPS: {fps_display:.1f}"
                         )
                         cv2.putText(
                             vis, info, (8, 24),
@@ -599,6 +670,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                 print("SLAM calibration result")
                 print(f"{'='*50}")
                 print(f"Frames processed  : {calibrator.frame_count}")
+                print(f"Tag size          : {tag_size_cm:.1f} cm")
                 print(f"Markers in map    : {len(mmap)}")
                 for m in mmap.markers():
                     px, py, pz = m.position
@@ -801,7 +873,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                 if args.headless:
                     if detections:
                         for d in detections:
-                            print(f"[frame {frame_total}] {d}")
+                            print(f"[frame {frame_total}] {d}  (FPS: {fps_display:.1f})")
                     else:
                         print(
                             f"[frame {frame_total}] "
