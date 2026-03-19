@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from .auto_scenario import AutoFollowResult, AutoFollowScenario
     from .detector import RoboEyeDetector
     from .marker_map import SlamCalibrator
+    from .ros2_bridge import ROS2Bridge
 
 __all__ = [
     "APP_NAME",
@@ -61,6 +62,7 @@ __all__ = [
     "MarkerMap",
     "MarkerPose3D",
     "RobotPose3D",
+    "ROS2Bridge",
     "RoboEyeDetector",
     "SlamCalibrator",
     "Detection",
@@ -118,6 +120,11 @@ def __getattr__(name: str) -> Any:
         from . import headless_guide as _hg
 
         return getattr(_hg, name)
+
+    if name == "ROS2Bridge":
+        from .ros2_bridge import ROS2Bridge
+
+        return ROS2Bridge
 
     if name == "load_config":
         from .config import load_config
