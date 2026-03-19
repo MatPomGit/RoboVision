@@ -81,6 +81,9 @@ logger = logging.getLogger("robo_vision")
 # Ordered list of operating mode names (index+1 maps to mode name).
 _MODES = ["basic", "offset", "slam", "calibration", "box", "pose", "follow"]
 
+# Default physical side length of AprilTags in metres.
+_DEFAULT_TAG_SIZE = 0.05
+
 
 def _resolve_mode(value: str) -> str:
     """Convert a numeric mode selector (e.g. '1') to its string name.
@@ -244,7 +247,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--tag-size",
         type=float,
-        default=0.05,
+        default=_DEFAULT_TAG_SIZE,
         help="Physical side length of AprilTags in metres (pose/follow modes).",
     )
     parser.add_argument(
@@ -329,6 +332,102 @@ def _enabled_detectors_label(args: argparse.Namespace) -> str:
     if args.laser:
         names.append("Laser")
     return ", ".join(names) if names else "none"
+
+
+def _validate_startup(args: argparse.Namespace) -> list[str]:
+    """Run startup validation checks and return a list of warnings.
+
+    Checks performed:
+    1. Camera/video source accessibility (basic check).
+    2. Required output directories are writable (recordings, maps).
+    3. Critical parameter combinations (e.g. --mode slam without --tag-size).
+    4. Display server availability when --gui is used.
+
+    Parameters
+    ----------
+    args:
+        Parsed CLI arguments.
+
+    Returns
+    -------
+    list[str]
+        List of warning messages (empty if all checks pass).
+    """
+    warnings_list: list[str] = []
+
+    # 1. Check if video source file exists (for file-based sources)
+    if not args.source.isdigit():
+        source_path = Path(args.source)
+        if not source_path.exists() and not args.source.startswith(("rtsp://", "http://", "https://")):
+            warnings_list.append(
+                f"Video source file not found: {args.source!r}"
+            )
+
+    # 2. Check that output directories are writable
+    if args.record:
+        record_dir = Path(args.record).parent
+        if record_dir != Path(".") and not record_dir.exists():
+            try:
+                record_dir.mkdir(parents=True, exist_ok=True)
+                logger.info("Created recording directory: %s", record_dir)
+            except OSError as exc:
+                warnings_list.append(
+                    f"Cannot create recording directory {record_dir}: {exc}"
+                )
+        elif record_dir.exists() and not os.access(str(record_dir), os.W_OK):
+            warnings_list.append(
+                f"Recording directory is not writable: {record_dir}"
+            )
+
+    if args.map_file:
+        map_dir = Path(args.map_file).parent
+        if map_dir != Path(".") and not map_dir.exists():
+            try:
+                map_dir.mkdir(parents=True, exist_ok=True)
+                logger.info("Created map directory: %s", map_dir)
+            except OSError as exc:
+                warnings_list.append(
+                    f"Cannot create map directory {map_dir}: {exc}"
+                )
+
+    # Default maps directory
+    maps_dir = Path(__file__).resolve().parent / "maps"
+    if not maps_dir.exists():
+        try:
+            maps_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass  # Not critical – only needed if no --map-file is given
+
+    # 3. Validate critical parameter combinations
+    if args.mode == "slam" and args.tag_size == _DEFAULT_TAG_SIZE:
+        logger.warning(
+            "SLAM mode is active with default --tag-size (%s m). "
+            "For accurate mapping, set --tag-size to the actual "
+            "physical size of your AprilTags.",
+            _DEFAULT_TAG_SIZE,
+        )
+
+    if args.mode in ("pose", "follow") and args.tag_size == _DEFAULT_TAG_SIZE:
+        logger.warning(
+            "%s mode uses default --tag-size (%s m). "
+            "Set --tag-size for accurate distance estimation.",
+            args.mode,
+            _DEFAULT_TAG_SIZE,
+        )
+
+    # 4. Check display server availability for GUI mode
+    if args.gui:
+        display = os.environ.get("DISPLAY", "")
+        wayland = os.environ.get("WAYLAND_DISPLAY", "")
+        if not display and not wayland:
+            if sys.platform.startswith("linux"):
+                warnings_list.append(
+                    "No display server detected (DISPLAY and WAYLAND_DISPLAY "
+                    "are unset). GUI mode may fail on headless systems. "
+                    "Consider using --headless instead."
+                )
+
+    return warnings_list
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: C901
@@ -421,6 +520,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         )
         print(report)
         return 0
+
+    # ── Startup validation ────────────────────────────────────────────
+    startup_warnings = _validate_startup(args)
+    for w in startup_warnings:
+        logger.warning(w)
 
     detector = RoboEyeDetector(
         enable_apriltag=not args.no_apriltag,
