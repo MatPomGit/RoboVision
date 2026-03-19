@@ -283,36 +283,48 @@ class TestAutoFollowScenario:
 
 
 # ---------------------------------------------------------------------------
-# CLI --mode auto
+# CLI --mode follow (replaces legacy --mode auto)
 # ---------------------------------------------------------------------------
 
 
-class TestCLIScenarioAuto:
-    """Verify the --mode auto argument is accepted by the CLI parser."""
+class TestCLIScenarioFollow:
+    """Verify the --mode follow argument is accepted by the CLI parser."""
 
-    def test_parse_scenario_auto(self):
+    def test_parse_scenario_follow(self):
         from main import _parse_args
 
-        args = _parse_args(["--mode", "auto", "--source", "0"])
-        assert args.mode == "auto"
+        args = _parse_args(["--mode", "follow", "--source", "0"])
+        assert args.mode == "follow"
 
     def test_parse_follow_marker(self):
         from main import _parse_args
 
-        args = _parse_args(["--mode", "auto", "--follow-marker", "5"])
+        args = _parse_args(["--mode", "follow", "--follow-marker", "5"])
         assert args.follow_marker == "5"
 
     def test_parse_follow_marker_default_none(self):
         from main import _parse_args
 
-        args = _parse_args(["--mode", "auto"])
+        args = _parse_args(["--mode", "follow"])
         assert args.follow_marker is None
 
-    def test_scenario_auto_headless_with_mock_video(self, capsys, tmp_path):
-        """Integration: --mode auto --headless with a tiny synthetic video."""
+    def test_parse_follow_box_flag(self):
+        from main import _parse_args
+
+        args = _parse_args(["--mode", "follow", "--follow-box"])
+        assert args.follow_box is True
+
+    def test_parse_target_distance(self):
+        from main import _parse_args
+
+        args = _parse_args(["--mode", "follow", "--target-distance", "0.8"])
+        assert args.target_distance == pytest.approx(0.8)
+
+    def test_scenario_follow_headless_with_mock_video(self, capsys, tmp_path):
+        """Integration: --mode follow --headless with a tiny synthetic video."""
         cv2 = pytest.importorskip("cv2")
 
-        video_path = tmp_path / "auto_test.mp4"
+        video_path = tmp_path / "follow_test.mp4"
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         writer = cv2.VideoWriter(str(video_path), fourcc, 1, (64, 64))
         for _ in range(3):
@@ -326,11 +338,18 @@ class TestCLIScenarioAuto:
             from main import main
 
             rc = main([
-                "--mode", "auto",
+                "--mode", "follow",
                 "--headless",
                 "--source", str(video_path),
             ])
 
         assert rc == 0
         captured = capsys.readouterr()
-        assert "auto-follow" in captured.out.lower()
+        assert "follow" in captured.out.lower()
+
+    def test_auto_mode_no_longer_valid(self):
+        """--mode auto should now be rejected by argparse."""
+        from main import _parse_args
+
+        with pytest.raises(SystemExit):
+            _parse_args(["--mode", "auto"])

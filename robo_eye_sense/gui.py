@@ -101,7 +101,7 @@ _QUALITY_DESCRIPTIONS: dict[DetectionMode, str] = {
 }
 
 # Available scenario modes for the mode combobox
-_SCENARIO_MODES: list[str] = ["Basic", "Offset", "SLAM", "Auto"]
+_SCENARIO_MODES: list[str] = ["Basic", "Offset", "SLAM", "Follow"]
 
 
 def render_3d_scene(
@@ -844,7 +844,7 @@ class RoboEyeSenseApp:
             self._start_offset_scenario()
         elif new_mode == "SLAM":
             self._start_slam_scenario()
-        elif new_mode == "Auto":
+        elif new_mode == "Follow":
             self._start_auto_scenario()
 
     def _stop_all_scenarios(self) -> None:
@@ -868,8 +868,8 @@ class RoboEyeSenseApp:
             self._auto_scenario = None
             self._last_auto_result = None
             self._auto_info_var.set(
-                "Auto-follow not started.\n"
-                "Select 'Auto' mode to begin."
+                "Follow not started.\n"
+                "Select 'Follow' mode to begin."
             )
             self._auto_markers_list.delete(0, tk.END)
         self._set_scenario_text("Basic mode.\nNo scenario active.")
