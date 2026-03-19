@@ -1245,13 +1245,46 @@ class RoboEyeSenseApp:
         self._calibration_active = True
         self._calib_capture_btn.config(state="normal")
         self._calib_run_btn.config(state="disabled")
-        self._calib_status_var.set(
+        status = (
             f"Calibration started (board {cols}×{rows}).\n"
             "Hold the chessboard in view and\n"
             "click 'Capture frame' to collect\n"
             f"samples (need {_CALIB_MIN_CAPTURES}/25)."
         )
+        existing = self._load_calib_file_info(output)
+        if existing:
+            status += f"\n\nExisting calibration loaded from:\n{output}\n{existing}"
+        self._calib_status_var.set(status)
         self._mode_notebook.select(self._calibration_tab)
+
+    @staticmethod
+    def _load_calib_file_info(path: str) -> str:
+        """Return a human-readable summary of an existing .npz calibration file.
+
+        Returns an empty string when the file does not exist or cannot be read.
+        """
+        calib_path = Path(path)
+        if not calib_path.exists():
+            return ""
+        try:
+            data = np.load(str(calib_path))
+            lines: list[str] = []
+            if "camera_matrix" in data:
+                cm = data["camera_matrix"]
+                fx = float(cm[0, 0])
+                fy = float(cm[1, 1])
+                cx = float(cm[0, 2])
+                cy = float(cm[1, 2])
+                lines.append(
+                    f"fx={fx:.2f}  fy={fy:.2f}\ncx={cx:.2f}  cy={cy:.2f}"
+                )
+            if "dist_coeffs" in data:
+                dc = data["dist_coeffs"].flatten()
+                vals = "  ".join(f"{v:.4f}" for v in dc)
+                lines.append(f"dist: {vals}")
+            return "\n".join(lines) if lines else ""
+        except Exception:
+            return ""
 
     def _start_box_mode(self) -> None:
         """Activate box-detection mode."""
