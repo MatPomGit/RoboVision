@@ -879,7 +879,7 @@ class RoboEyeSenseApp:
                 "Select 'Follow' mode to begin."
             )
             self._auto_markers_list.delete(0, tk.END)
-        self._set_mode_text("Basic mode.\nNo mode active.")
+        self._set_mode_text("Basic mode.")
 
     def _start_offset_mode(self) -> None:
         """Activate the offset-calibration mode."""
