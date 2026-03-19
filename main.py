@@ -285,6 +285,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "rules, and loaded tag names, then exit."
         ),
     )
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Print execution times of key detection methods.",
+    )
     return parser.parse_args(argv)
 
 
@@ -352,6 +357,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     root.addHandler(_h_err)
 
     logger.info("%s %s", APP_NAME, __version__)
+
+    # ── Profiling ─────────────────────────────────────────────────────
+    if args.profile:
+        from robo_vision.profiling import enable_profiling
+
+        enable_profiling()
+        logger.info("Profiling enabled")
 
     # ── Load YAML configuration (if provided) ────────────────────────
     if args.config:
@@ -622,6 +634,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                             print(f"  tag {tag_id:>4s}: ({tdx:+.1f}, {tdy:+.1f}) px")
                     print(f"{'='*50}")
                     logger.info("Offset scenario finished.")
+        except KeyboardInterrupt:
+            logger.info("Interrupted by user.")
         except RuntimeError as exc:
             logger.error("%s", exc)
             return 1
@@ -689,9 +703,16 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                     if frame is None:
                         break
 
-                    map_size_before = len(calibrator.marker_map)
-                    detections = detector.process_frame(frame)
-                    robot_pose = calibrator.process_detections(detections)
+                    try:
+                        map_size_before = len(calibrator.marker_map)
+                        detections = detector.process_frame(frame)
+                        robot_pose = calibrator.process_detections(detections)
+                    except cv2.error as exc:
+                        logger.error("OpenCV error during SLAM detection: %s", exc)
+                        continue
+                    except (ValueError, TypeError) as exc:
+                        logger.error("SLAM detection error: %s", exc)
+                        continue
                     frame_idx += 1
 
                     # FPS calculation
@@ -801,6 +822,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                     )
                 print(f"Map saved to      : {map_path}")
                 print(f"{'='*50}")
+        except KeyboardInterrupt:
+            logger.info("Interrupted by user.")
         except RuntimeError as exc:
             logger.error("%s", exc)
             return 1
@@ -901,7 +924,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                         "fps": fps_display,
                     }
 
-                    vis = active_mode.run(frame, ctx)
+                    try:
+                        vis = active_mode.run(frame, ctx)
+                    except cv2.error as exc:
+                        logger.error("OpenCV error in %s mode: %s", args.mode, exc)
+                        continue
+                    except (ValueError, TypeError) as exc:
+                        logger.error("Error in %s mode: %s", args.mode, exc)
+                        continue
 
                     if not args.headless:
                         cv2.imshow(f"RoboEyeSense – {args.mode}", vis)
@@ -910,6 +940,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                         recorder.write_frame(vis)
 
                 logger.info("Stream ended. Total frames: %d", frame_idx)
+        except KeyboardInterrupt:
+            logger.info("Interrupted by user.")
         except RuntimeError as exc:
             logger.error("%s", exc)
             return 1
@@ -975,7 +1007,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                 if frame is None:
                     break
 
-                detections = detector.process_frame(frame)
+                try:
+                    detections = detector.process_frame(frame)
+                except cv2.error as exc:
+                    logger.error("OpenCV error during detection: %s", exc)
+                    continue
+                except (ValueError, TypeError) as exc:
+                    logger.error("Detection error: %s", exc)
+                    continue
                 frame_total += 1
 
                 # FPS calculation
@@ -1018,6 +1057,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
                         break
 
             logger.info("Stream ended. Total frames processed: %d", frame_total)
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user.")
     finally:
         if recorder is not None:
             recorder.stop()

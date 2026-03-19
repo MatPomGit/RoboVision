@@ -32,6 +32,7 @@ from . import april_tag_detector
 from .laser_detector import LaserSpotDetector
 from .qr_detector import QRCodeDetector
 from .results import Detection, DetectionMode, DetectionType
+from .profiling import profile_method
 from .tracker import CentroidTracker
 
 # BGR colours used when drawing each detection type on the annotated frame
@@ -342,6 +343,7 @@ class RoboEyeDetector:
     # Core processing
     # ------------------------------------------------------------------
 
+    @profile_method
     def process_frame(self, frame: np.ndarray) -> List[Detection]:
         """Run all enabled detectors on *frame* and return tracked detections.
 
@@ -388,6 +390,7 @@ class RoboEyeDetector:
         self._tracker.update(detections)
         return detections
 
+    @profile_method
     def _run_detectors(self, frame: np.ndarray) -> List[Detection]:
         """Run all enabled sub-detectors on *frame* and return raw results.
 
