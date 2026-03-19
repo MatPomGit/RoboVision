@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any
 
+from .base_detector import BaseDetector
 from .marker_map import MarkerMap, MarkerPose3D, RobotPose3D
 from .results import Detection, DetectionMode, DetectionType
 
@@ -56,6 +57,7 @@ __all__ = [
     "APP_NAME",
     "AutoFollowResult",
     "AutoFollowScenario",
+    "BaseDetector",
     "MarkerMap",
     "MarkerPose3D",
     "RobotPose3D",
