@@ -105,6 +105,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         version=f"{APP_NAME} {__version__}",
     )
     parser.add_argument(
+        "--config",
+        default=None,
+        metavar="FILE",
+        help="Path to a YAML configuration file. CLI arguments take precedence.",
+    )
+    parser.add_argument(
         "--source",
         default="0",
         help="Camera index (0, 1, …) or path/URL to a video file or stream.",
@@ -346,6 +352,18 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     root.addHandler(_h_err)
 
     logger.info("%s %s", APP_NAME, __version__)
+
+    # ── Load YAML configuration (if provided) ────────────────────────
+    if args.config:
+        try:
+            from robo_vision.config import load_config, merge_config_with_args
+
+            config_data = load_config(args.config)
+            cli_defaults = vars(_parse_args([]))
+            args = merge_config_with_args(config_data, args, cli_defaults)
+            logger.info("Config loaded     : %s", args.config)
+        except (ImportError, FileNotFoundError) as exc:
+            logger.warning("Could not load config: %s", exc)
 
     mode = _QUALITY_TO_DETECTION_MODE[args.quality]
 

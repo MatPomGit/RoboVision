@@ -14,3 +14,6 @@ pupil-apriltags>=1.0.4
 #   Ubuntu/Debian:  sudo apt-get install libzbar0
 #   macOS:          brew install zbar
 pyzbar>=0.1.9
+
+# YAML configuration file support
+pyyaml>=5.0

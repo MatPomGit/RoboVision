@@ -71,6 +71,7 @@ __all__ = [
     "get_device_status",
     "get_calibration_info",
     "print_headless_guide",
+    "load_config",
     "__version__",
 ]
 APP_NAME = "robo-vision"
@@ -117,5 +118,10 @@ def __getattr__(name: str) -> Any:
         from . import headless_guide as _hg
 
         return getattr(_hg, name)
+
+    if name == "load_config":
+        from .config import load_config
+
+        return load_config
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
