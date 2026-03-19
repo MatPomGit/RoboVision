@@ -377,6 +377,11 @@ python main.py --mode slam --headless --ros --tag-size 0.05 --record slam_ros.mp
 
 ### Integracja z ROS2
 
+ping 192.168.123.18 #Dock PC IP
+ping 192.168.123.20 #Lidar IP
+ping 192.168.123.161 #Motion Control PC IP
+
+
 robo-vision zawiera wbudowany mostek ROS2 (`robo_vision/ros2_bridge.py`), który
 pozwala na współpracę z ekosystemem ROS w czasie rzeczywistym.
 
@@ -385,6 +390,8 @@ pozwala na współpracę z ekosystemem ROS w czasie rzeczywistym.
 ```bash
 python main.py --ros-status
 ```
+ros2 topic list #View message topics
+
 
 Wyświetla:
 
@@ -399,6 +406,7 @@ Wyświetla:
 python main.py --headless --ros
 python main.py --headless --ros --mode slam --tag-size 0.05
 ```
+
 
 Flaga `--ros` uruchamia węzeł ROS2 w tle i:
 
