@@ -667,6 +667,11 @@ class TestMediaPipeMode:
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
         result = mode.run(frame, _make_context())
         assert result.shape == frame.shape
+        # Verify the error message is rendered onto the returned frame
+        # (error path writes red text; frame is no longer all-zeros)
+        assert not np.array_equal(result, frame), (
+            "Error overlay should modify the frame"
+        )
 
     def test_run_with_mock_landmarker(self):
         """run() draws skeleton when landmarker returns landmarks."""
@@ -701,27 +706,21 @@ class TestMediaPipeMode:
         assert result.shape == frame.shape
 
     def test_headless_output(self, capsys):
-        """In headless mode the detected pose count is printed."""
-        from modes.mediapipe_mode import MediaPipeMode, PoseDetection, PoseLandmark
+        """In headless mode the error message is displayed (no real model needed)."""
+        from modes.mediapipe_mode import MediaPipeMode
 
+        # Use error path: inject init error without real mediapipe landmarker
         mode = MediaPipeMode()
         mode._init_error = "mediapipe not installed"
 
         frame = np.zeros((100, 100, 3), dtype=np.uint8)
-        # Force a successful "empty" run by giving it a no-op landmarker
-        mode._landmarker = MagicMock()
-        mock_result = MagicMock()
-        mock_result.pose_landmarks = []
-        mode._landmarker.detect.return_value = mock_result
-        mode._init_error = None  # clear error so detection path runs
-
-        with patch("mediapipe.Image"):
-            with patch("mediapipe.ImageFormat"):
-                pass
-        # Simplest check: error path still returns a frame
-        mode._init_error = "mediapipe not installed"
         result = mode.run(frame, _make_context(headless=True, frame_idx=5))
+        # Shape must be preserved even on the error path
         assert result.shape == frame.shape
+        # The error path renders text onto the frame (frame is modified)
+        assert not np.array_equal(result, frame), (
+            "Error overlay should modify the frame"
+        )
 
     def test_num_poses_clamped_to_one(self):
         from modes.mediapipe_mode import MediaPipeMode
@@ -939,19 +938,18 @@ class TestNewModeIntegration:
             "robo_vision.april_tag_detector._apriltags_available",
             return_value=False,
         ):
-            # Patch _default_model_path so no download is attempted and
-            # inject a mock landmarker to avoid needing a real model file.
-            with patch("modes.mediapipe_mode._default_model_path") as mock_path:
-                mock_path.return_value = "/nonexistent/model.task"
-                with patch(
-                    "modes.mediapipe_mode.MediaPipeMode._ensure_initialized",
-                    return_value=False,
-                ):
-                    from main import main
+            # Patch _ensure_initialized to return False so no model download
+            # or real mediapipe landmarker is needed.
+            with patch(
+                "modes.mediapipe_mode.MediaPipeMode._ensure_initialized",
+                return_value=False,
+            ):
+                from main import main
 
-                    rc = main([
-                        "--mode", "mediapipe",
-                        "--headless",
-                        "--source", str(video),
-                    ])
+                rc = main([
+                    "--mode", "mediapipe",
+                    "--headless",
+                    "--source", str(video),
+                ])
+        # Mode must exit cleanly (rc=0) even when mediapipe is unavailable
         assert rc == 0
